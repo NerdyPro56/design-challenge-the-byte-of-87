@@ -260,7 +260,7 @@ extern "C" {
 
 /* AES */
 #undef NO_AES
-#if 1
+#if 0
 	#undef  HAVE_AES_CBC
 	#define HAVE_AES_CBC
 
@@ -296,7 +296,7 @@ extern "C" {
 /* ChaCha20 / Poly1305 */
 #undef HAVE_CHACHA
 #undef HAVE_POLY1305
-#if 0
+#if 1
     #define HAVE_CHACHA
     #define HAVE_POLY1305
 
