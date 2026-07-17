@@ -148,6 +148,14 @@ def run(uart_in=b"", max_count=600_000_000, preload_flash=None):
     uc.hook_add(UC_HOOK_MEM_WRITE, hook_mem_write, begin=FLASHCTL_BASE, end=FLASHCTL_BASE+FLASHCTL_SIZE)
     uc.hook_add(UC_HOOK_MEM_UNMAPPED, hook_unmapped)
 
+    # SysCtlReset writes NVIC_APINT then spins; stop there
+    def hook_reset(uc, access, address, size, value, user):
+        if address == 0xE000ED0C and ((value >> 16) == 0x05FA):
+            bench.did_reset = True
+            uc.emu_stop()
+        return True
+    uc.hook_add(UC_HOOK_MEM_WRITE, hook_reset, begin=0xE000ED00, end=0xE000ED10)
+
     # enable FPU (CPACR CP10/11)
     CPACR = 0xE000ED88
     uc.mem_write(CPACR, struct.pack("<I", 0xF << 20))
