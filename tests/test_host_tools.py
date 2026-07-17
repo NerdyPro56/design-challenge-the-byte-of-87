@@ -83,6 +83,13 @@ class HostTools(unittest.TestCase):
         c.update(aad)
         self.assertRaises(ValueError, c.decrypt_and_verify, ct, tag)
 
+    def test_tampered_signature_rejected(self):
+        blob = bytearray(self.protect(4, "x"))
+        blob[AAD + NONCE + TAG] ^= 1
+        aad, nonce, tag, sig, ct = self.split(bytes(blob))
+        v = eddsa.new(self.pub, "rfc8032")
+        self.assertRaises(ValueError, v.verify, aad + nonce + tag + ct, sig)
+
 
 if __name__ == "__main__":
     unittest.main()
