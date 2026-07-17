@@ -46,9 +46,10 @@ WOLFSSL_MAKE_ARGS=TOOLCHAIN=$(TOOLCHAIN) \
 			 	  ARCHFLAGS=$(ARCHFLAGS) \
 				  NO_EXAMPLES=$(NO_EXAMPLES) \
 				  FIPS=$(FIPS)
+# Top level, not inside the recipe: a recipe-local assignment never reaches the link line
+WOLFSSL_ARCHIVE=${WOLFSSL}/IDE/GCC-ARM/Build/libwolfssl.a
 wolfssl:
-	make -C ${WOLFSSL}/IDE/GCC-ARM $(WOLFSSL_MAKE_ARGS)
-	WOLFSSL_ARCHIVE=${WOLFSSL}/IDE/GCC-ARM/Build/libwolfssl.a
+	make -C ${WOLFSSL}/IDE/GCC-ARM WolfSSLStaticLib $(WOLFSSL_MAKE_ARGS)
 
 bootloader: src/bootloader.o
 bootloader: src/startup_gcc.o
