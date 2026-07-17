@@ -308,7 +308,7 @@ extern "C" {
 /* Ed25519 / Curve25519 */
 #undef HAVE_CURVE25519
 #undef HAVE_ED25519
-#if 0
+#if 1
     #define HAVE_CURVE25519
     #define HAVE_ED25519 /* ED25519 Requires SHA512 */
 
@@ -316,6 +316,12 @@ extern "C" {
     #if 1
         #define CURVED25519_SMALL
     #endif
+
+    /* ED25519_SMALL selects ge_low_mem.c so verify fits the stack; distinct from CURVED25519_SMALL */
+    #define ED25519_SMALL
+
+    /* Stream the signed message through verify a frame at a time */
+    #define WOLFSSL_ED25519_STREAMING_VERIFY
 #endif
 
 
@@ -347,8 +353,8 @@ extern "C" {
 
 /* Sha512 */
 #undef WOLFSSL_SHA512
-#if 0
-    #define WOLFSSL_SHA512
+#if 1
+    #define WOLFSSL_SHA512 /* required by Ed25519 */
 
     /* Sha384 */
     #undef  WOLFSSL_SHA384
