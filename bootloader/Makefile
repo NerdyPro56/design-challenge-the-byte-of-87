@@ -19,12 +19,15 @@ CFLAGS+=-I${INC}
 
 CFLAGS+=-DWOLFSSL_USER_SETTINGS
 
+# Debug lock on by default; bl_build.py passes LOCK=0 for a dev board that keeps its port
+LOCK?=1
+CFLAGS+=-DLOCK=${LOCK}
+
 all: bootloader
 
 bootloader: driverlib
 bootloader: uart
-# Uncomment to compile wolfssl, must `git submodule update --init --recursive` first!
-#bootloader: wolfssl
+bootloader: wolfssl
 
 driverlib:
 	make -C ${LIB}/driverlib
