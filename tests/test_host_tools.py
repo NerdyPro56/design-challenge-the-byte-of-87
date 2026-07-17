@@ -69,6 +69,12 @@ class HostTools(unittest.TestCase):
         pt = c.decrypt_and_verify(ct, tag)
         self.assertEqual(pt, self.fw + msg.encode() + b"\x00")
 
+    def test_signature_covers_aad_nonce_tag_ct(self):
+        blob = self.protect(4, "signed")
+        aad, nonce, tag, sig, ct = self.split(blob)
+        v = eddsa.new(self.pub, "rfc8032")
+        v.verify(aad + nonce + tag + ct, sig)
+
 
 if __name__ == "__main__":
     unittest.main()
