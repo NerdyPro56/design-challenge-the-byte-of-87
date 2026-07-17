@@ -51,6 +51,15 @@ class HostTools(unittest.TestCase):
         ct = blob[HDR:]
         return aad, nonce, tag, sig, ct
 
+    def test_header_layout(self):
+        msg = "release five"
+        blob = self.protect(5, msg)
+        ver, size, mlen = struct.unpack("<HHH", blob[:AAD])
+        self.assertEqual(ver, 5)
+        self.assertEqual(size, len(self.fw))
+        self.assertEqual(mlen, len(msg) + 1)
+        self.assertEqual(len(blob), HDR + size + mlen)
+
 
 if __name__ == "__main__":
     unittest.main()
