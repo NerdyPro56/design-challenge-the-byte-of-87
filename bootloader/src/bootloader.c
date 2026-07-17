@@ -58,6 +58,20 @@ static void reject(void) {
     SysCtlReset();
 }
 
+// kill jtag/swd so a dump reads nothing
+// locked is dbg1==0 never set dbg1 that reopens debug
+#if LOCK
+static void lock_debug(void) {
+    if ((HWREG(FLASH_BOOTCFG) & 0x00000002) == 0) { // already locked
+        return;
+    }
+    HWREG(FLASH_FMD) = HWREG(FLASH_BOOTCFG) & ~0x00000002; // clear dbg1 only
+    HWREG(FLASH_FMA) = 0x75100000;                         // bootcfg commit addr
+    HWREG(FLASH_FMC) = FLASH_FMC_WRKEY | FLASH_FMC_COMT;
+    while (HWREG(FLASH_FMC) & FLASH_FMC_COMT) { }
+}
+#endif
+
 // bits fall 1->0 bump one word never erase
 static uint32_t *min_ver_slot(void) {
     uint32_t *p = (uint32_t *)MIN_VER_BASE;
@@ -69,6 +83,10 @@ static uint32_t *min_ver_slot(void) {
 
 
 int main(void) {
+
+#if LOCK
+    lock_debug(); // lock before any uart
+#endif
 
     initialize_uarts(UART0);
 
