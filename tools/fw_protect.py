@@ -5,34 +5,44 @@
 
 """
 Firmware Bundle-and-Protect Tool
-
 """
 import argparse
 import struct
 
+from Crypto.Cipher import ChaCha20_Poly1305
+from Crypto.PublicKey import ECC
+from Crypto.Random import get_random_bytes
+from Crypto.Signature import eddsa
+
 
 def protect_firmware(infile, outfile, version, message):
-    # Load firmware binary from infile
     with open(infile, "rb") as fp:
         firmware = fp.read()
 
-    # Append null-terminated message to end of firmware
-    firmware_and_message = firmware + message.encode() + b"\00"
+    with open("secret_build_output.txt", "rb") as f:
+        blob = f.read()
+    key = blob[:32]
+    sk = ECC.construct(curve="Ed25519", seed=blob[32:64])
 
-    # Pack version and size into two little-endian shorts
-    metadata = struct.pack('<H', version) + struct.pack('<H', len(firmware))
-    assert(len(metadata) == 4)
+    # Null keeps an empty release message legal: msg_len is 1, never 0.
+    msg = message.encode() + b"\x00"
+    aad = struct.pack("<HHH", version, len(firmware), len(msg))
 
-    # Append firmware and message to metadata
-    firmware_blob = metadata + firmware_and_message
+    # Nonce is per image: the Poly1305 key derives from key+nonce and must never repeat.
+    nonce = get_random_bytes(12)
+    c = ChaCha20_Poly1305.new(key=key, nonce=nonce)
+    c.update(aad)
+    ct, tag = c.encrypt_and_digest(firmware + msg)
 
-    # Write firmware blob to outfile
-    with open(outfile, "wb+") as outfile:
-        outfile.write(firmware_blob)
+    # Sign everything but the signature itself, so a key leak still cannot forge.
+    sig = eddsa.new(sk, "rfc8032").sign(aad + nonce + tag + ct)
+
+    with open(outfile, "wb") as f:
+        f.write(aad + nonce + tag + sig + ct)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Firmware Update Tool")
+    parser = argparse.ArgumentParser(description="Firmware Protect Tool")
     parser.add_argument("--infile", help="Path to the firmware image to protect.", required=True)
     parser.add_argument("--outfile", help="Filename for the output firmware.", required=True)
     parser.add_argument("--version", help="Version number of this firmware.", required=True)
