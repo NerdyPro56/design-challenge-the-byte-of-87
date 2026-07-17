@@ -95,6 +95,11 @@ class HostTools(unittest.TestCase):
         ver, size, mlen = struct.unpack("<HHH", blob[:AAD])
         self.assertEqual(mlen, 1)
 
+    def test_max_version_packs(self):
+        blob = self.protect(0xFFFF, "top")
+        ver, size, mlen = struct.unpack("<HHH", blob[:AAD])
+        self.assertEqual(ver, 0xFFFF)
+
 
 if __name__ == "__main__":
     unittest.main()
