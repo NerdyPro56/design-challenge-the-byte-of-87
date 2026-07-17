@@ -90,6 +90,11 @@ class HostTools(unittest.TestCase):
         v = eddsa.new(self.pub, "rfc8032")
         self.assertRaises(ValueError, v.verify, aad + nonce + tag + ct, sig)
 
+    def test_empty_message_has_null(self):
+        blob = self.protect(2, "")
+        ver, size, mlen = struct.unpack("<HHH", blob[:AAD])
+        self.assertEqual(mlen, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
