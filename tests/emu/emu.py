@@ -131,8 +131,16 @@ def run(uart_in=b"", max_count=600_000_000, preload_flash=None):
                 bench.fwbval = 0
         return True
 
+    def hook_flashctl_read(uc, access, address, size, value, user):
+        if address == FMC or address == FMC2: # busy bits read 0 = done
+            uc.mem_write(address, b"\x00\x00\x00\x00")
+        elif address == FWBVAL:
+            uc.mem_write(FWBVAL, struct.pack("<I", bench.fwbval))
+        return True
+
     uc.hook_add(UC_HOOK_MEM_READ, hook_mem_read, begin=PERIPH_BASE, end=PERIPH_BASE+PERIPH_SIZE)
     uc.hook_add(UC_HOOK_MEM_WRITE, hook_mem_write, begin=PERIPH_BASE, end=PERIPH_BASE+PERIPH_SIZE)
+    uc.hook_add(UC_HOOK_MEM_READ, hook_flashctl_read, begin=FLASHCTL_BASE, end=FLASHCTL_BASE+FLASHCTL_SIZE)
     uc.hook_add(UC_HOOK_MEM_WRITE, hook_mem_write, begin=FLASHCTL_BASE, end=FLASHCTL_BASE+FLASHCTL_SIZE)
 
     # enable FPU (CPACR CP10/11)
