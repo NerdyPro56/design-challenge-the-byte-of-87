@@ -110,6 +110,25 @@ def run(uart_in=b"", max_count=600_000_000, preload_flash=None):
             bench.fwbval |= (1 << i)
         elif address == FWBVAL:
             bench.fwbval = value
+        elif address == FMC:
+            if (value & 0xFFFF0000) == FMC_WRKEY:
+                if value & FMC_ERASE:
+                    page = bench.fma & ~0x3FF
+                    flash[page:page + 1024] = b"\xff" * 1024
+                    uc.mem_write(FLASH_BASE + page, bytes(flash[page:page + 1024]))
+                elif value & FMC_WRITE:
+                    a = bench.fma
+                    flash[a:a+4] = struct.pack("<I", bench.fmd)
+                    uc.mem_write(FLASH_BASE + a, bytes(flash[a:a+4]))
+        elif address == FMC2:
+            if (value & 0xFFFF0000) == FMC_WRKEY and (value & FMC2_WRBUF):
+                base = bench.fma & ~0x7F
+                for i in range(32):
+                    if bench.fwbval & (1 << i):
+                        a = base + i * 4
+                        flash[a:a+4] = struct.pack("<I", bench.wbuf[i])
+                uc.mem_write(FLASH_BASE + base, bytes(flash[base:base+128]))
+                bench.fwbval = 0
         return True
 
     uc.hook_add(UC_HOOK_MEM_READ, hook_mem_read, begin=PERIPH_BASE, end=PERIPH_BASE+PERIPH_SIZE)
