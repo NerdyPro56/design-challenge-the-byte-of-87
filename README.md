@@ -1,5 +1,11 @@
 # Cryptographic Automotive Software Handler and Bootloader (CrASHBoot)
 
+## The Byte of 87 secure redesign
+
+This repository hardens CrASHBoot for the 2026 BWSI eCTF. The update path uses ChaCha20-Poly1305 with an Ed25519 signature over the header and ciphertext, a monotone `min_ver` ratchet blocks rollback, and the boot record commits through a derived magic rather than a branch. The debug port locks at first boot so a flash dump returns nothing.
+
+---
+
 Installation and development guide for the most secure (TM) automotive bootloader on the planet! We guarentee that cars running our software will be unhackable (provided hacking is not attempted). Of all the automotive bootloaders, this is certainly one of them. Read on and tremble at our embedded security skillz.
 
 ### Internal Notes
@@ -97,7 +103,7 @@ Run to clone wolfssl to ./lib
 git submodule update --init --recursive
 ```
 
-You must also uncomment the wolfssl build instructions in the ./bootloader/Makefile in order to include WolfSSL in your build.
+The wolfssl build target is already enabled in the ./bootloader/Makefile, so no manual edit is needed once the submodule is populated.
 
 A sample `user_settings.h` is available in the ./bootloader/inc directory. This will allow you to configure the library to suit your project needs.
 
