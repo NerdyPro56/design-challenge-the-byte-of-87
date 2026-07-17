@@ -75,6 +75,14 @@ class HostTools(unittest.TestCase):
         v = eddsa.new(self.pub, "rfc8032")
         v.verify(aad + nonce + tag + ct, sig)
 
+    def test_tampered_ciphertext_breaks_tag(self):
+        blob = bytearray(self.protect(4, "x"))
+        blob[HDR + 2] ^= 1
+        aad, nonce, tag, sig, ct = self.split(bytes(blob))
+        c = ChaCha20_Poly1305.new(key=self.key, nonce=nonce)
+        c.update(aad)
+        self.assertRaises(ValueError, c.decrypt_and_verify, ct, tag)
+
 
 if __name__ == "__main__":
     unittest.main()
