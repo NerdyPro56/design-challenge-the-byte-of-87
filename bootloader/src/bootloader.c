@@ -26,6 +26,7 @@
 
 // Forward Declarations
 void load_firmware(void);
+void boot_firmware(void);
 
 // Firmware Constants
 #define METADATA_BASE 0xFC00 // boot record
@@ -83,6 +84,10 @@ int main(void) {
             load_firmware();
             uart_write_str(UART0, "Loaded new firmware.\n");
             nl(UART0);
+        } else if (instruction == BOOT) {
+            uart_write_str(UART0, "B");
+            uart_write_str(UART0, "Booting firmware...\n");
+            boot_firmware();
         }
     }
 }
@@ -229,4 +234,30 @@ long program_flash(void* page_addr, unsigned char * data, unsigned int data_len)
         // Write full buffer of 4-byte words
         return FlashProgram((unsigned long *)data, (uint32_t) page_addr, data_len);
     }
+}
+
+void boot_firmware(void) {
+    uint16_t size = *fw_size_address;
+    uint16_t msg_len = *(uint16_t *)(METADATA_BASE + 4);
+
+    // fold magic+bounds twice erased page fails
+    // gate print and jump a skipped branch cannot leak flash
+    uint32_t bad = *(uint32_t *)(METADATA_BASE + 8) ^ BOOT_MAGIC;
+    if (size > MAX_FW_SIZE)    { bad |= 0x10000; }
+    if (msg_len > MAX_MSG_LEN) { bad |= 0x20000; }
+    bad |= *(uint32_t *)(METADATA_BASE + 8) ^ BOOT_MAGIC;
+
+    if (bad) {
+        uart_write_str(UART0, "No firmware loaded. Please RESET device.\n");
+        while (1) { }
+    }
+
+    uint8_t *msg = (uint8_t *)(FW_BASE + size);
+    for (uint16_t i = 0; i < msg_len && msg[i] && !bad; i++) { // !bad skipped gate cannot leak
+        uart_write(UART0, msg[i]);
+    }
+
+    if (bad) { while (1) { } } // recheck before jump
+    __asm("LDR R0,=0x10001\n\t"
+          "BX R0\n\t");
 }
