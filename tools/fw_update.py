@@ -24,7 +24,6 @@ just a zero
 
 import argparse
 import struct
-import time
 import serial
 
 from util import *
@@ -66,8 +65,6 @@ def send_frame(ser, frame, debug=False):
         print_hex(frame)
 
     resp = ser.read(1)  # Wait for an OK from the bootloader
-
-    time.sleep(0.1)
 
     if resp != RESP_OK:
         raise RuntimeError("ERROR: Bootloader responded with {}".format(repr(resp)))
