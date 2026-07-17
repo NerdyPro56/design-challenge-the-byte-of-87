@@ -124,3 +124,15 @@ def run(uart_in=b"", max_count=600_000_000, preload_flash=None):
         "unmapped": [(a, hex(x)) for a, x in unmapped[:8]],
         "sp": sp, "reset": reset,
     }
+
+def main():
+    r = run()
+    print("SP=0x%08x reset=0x%08x" % (r["sp"], r["reset"]))
+    if r["err"]:
+        print("STOP UcError:", r["err"][0], "PC=0x%08x" % r["err"][1])
+    print("uart_out (%d bytes):" % len(r["uart_out"]), r["uart_out"][:80])
+    if r["unmapped"]:
+        print("first unmapped accesses:", r["unmapped"])
+
+if __name__ == "__main__":
+    main()
