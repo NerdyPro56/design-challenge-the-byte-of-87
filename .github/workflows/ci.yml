@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: arm toolchain
+        uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: '13.2.Rel1'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: python deps
+        run: pip install pycryptodome pyserial
+
+      - name: build bootloader
+        working-directory: tools
+        run: python bl_build.py
+
+      - name: image fits under the ratchet ceiling
+        run: |
+          size=$(wc -c < bootloader/bin/bootloader.bin)
+          echo "bootloader.bin: $size bytes"
+          test "$size" -lt 63488
