@@ -60,6 +60,15 @@ class HostTools(unittest.TestCase):
         self.assertEqual(mlen, len(msg) + 1)
         self.assertEqual(len(blob), HDR + size + mlen)
 
+    def test_roundtrip_decrypt(self):
+        msg = "hello"
+        blob = self.protect(2, msg)
+        aad, nonce, tag, sig, ct = self.split(blob)
+        c = ChaCha20_Poly1305.new(key=self.key, nonce=nonce)
+        c.update(aad)
+        pt = c.decrypt_and_verify(ct, tag)
+        self.assertEqual(pt, self.fw + msg.encode() + b"\x00")
+
 
 if __name__ == "__main__":
     unittest.main()
