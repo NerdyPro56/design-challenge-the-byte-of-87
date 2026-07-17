@@ -88,12 +88,28 @@ def run(uart_in=b"", max_count=600_000_000, preload_flash=None):
             uc.mem_write(address, struct.pack("<I", v)[:size])
         return True
 
+    # flash write-buffer model (driverlib FlashProgram)
+    FMC2, FWBVAL, FWBN = 0x400FD020, 0x400FD030, 0x400FD100
+    FMC2_WRBUF = 0x01
+    bench.wbuf = [0] * 32
+    bench.fwbval = 0
+
     def hook_mem_write(uc, access, address, size, value, user):
         if UART0 <= address < UART0 + 0x1000:
             bench.uart_write_hook(address - UART0, value)
             if bench.uart_out.endswith(b"Loaded new firmware.\n"): # stop at completion banner
                 uc.emu_stop()
             return True
+        if address == FMA:
+            bench.fma = value
+        elif address == FMD:
+            bench.fmd = value
+        elif FWBN <= address < FWBN + 128:
+            i = (address - FWBN) >> 2
+            bench.wbuf[i] = value
+            bench.fwbval |= (1 << i)
+        elif address == FWBVAL:
+            bench.fwbval = value
         return True
 
     uc.hook_add(UC_HOOK_MEM_READ, hook_mem_read, begin=PERIPH_BASE, end=PERIPH_BASE+PERIPH_SIZE)
