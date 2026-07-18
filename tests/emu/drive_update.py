@@ -54,3 +54,13 @@ def check(label, version, message, fw_bytes, preload=None, expect_commit=True):
         ok = ok and fw_region == fw_bytes and rec_size == len(fw_bytes)
     print(f"  => {'PASS' if ok else 'FAIL'} (expected commit={expect_commit})")
     return ok, r
+
+FW = bytes((i*37+11) & 0xff for i in range(2048))
+
+results = []
+
+ok, r1 = check("update v5 (fresh device)", 5, "release five", FW)
+results.append(ok)
+
+print("ALL PASS" if all(results) else "SOME FAILED", f"({sum(results)}/{len(results)})")
+sys.exit(0 if all(results) else 1)
