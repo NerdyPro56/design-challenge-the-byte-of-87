@@ -53,7 +53,7 @@ class Bench:
         if offset == UART_DR:
             self.uart_out.append(value & 0xFF)
 
-def run(uart_in=b"", max_count=600_000_000, preload_flash=None):
+def run(uart_in=b"", max_count=600_000_000, preload_flash=None, code_hooks=None):
     global flash
     flash = bytearray(b"\xff" * FLASH_SIZE)
     code = open(BIN, "rb").read()
@@ -163,6 +163,15 @@ def run(uart_in=b"", max_count=600_000_000, preload_flash=None):
         uc.reg_write(UC_ARM_REG_C1_C0_2, 0xF << 20)
     except Exception:
         pass
+
+    # optional fault-injection hooks: (address, fn(uc)) fired when PC hits address
+    if code_hooks:
+        for addr, fn in code_hooks:
+            def mk(fn):
+                def h(uc, address, size, user):
+                    fn(uc)
+                return h
+            uc.hook_add(UC_HOOK_CODE, mk(fn), begin=addr, end=addr)
 
     sp = struct.unpack("<I", bytes(uc.mem_read(0x0, 4)))[0]
     reset = struct.unpack("<I", bytes(uc.mem_read(0x4, 4)))[0]
