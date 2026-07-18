@@ -22,7 +22,10 @@ jobs:
           python-version: '3.12'
 
       - name: python deps
-        run: pip install pycryptodome pyserial
+        run: pip install pycryptodome pyserial unicorn
+
+      - name: host tool unit tests
+        run: python -m unittest discover -s tests -v
 
       - name: build bootloader
         working-directory: tools
@@ -49,3 +52,6 @@ jobs:
           assert ver == 3 and size == 2048 and mlen == len(msg) + 1
           print("protected image ok:", len(blob), "bytes")
           PY
+
+      - name: emulation end-to-end (unicorn runs bootloader.bin)
+        run: python tests/emu/drive_update.py
