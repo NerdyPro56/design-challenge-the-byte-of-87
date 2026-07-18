@@ -81,6 +81,18 @@ static uint32_t *min_ver_slot(void) {
     return p; // first free word
 }
 
+// re-read the floor from flash on every call; noinline + volatile so no single held
+// register feeds all the version gates, else one value-fault on it rolls back
+__attribute__((noinline)) static uint16_t cur_floor(void) {
+    volatile uint32_t *p = (volatile uint32_t *)MIN_VER_BASE;
+    uint16_t v = 1;
+    while (p < (volatile uint32_t *)METADATA_BASE && *p != 0xFFFFFFFF) {
+        v = (uint16_t)*p;
+        p++;
+    }
+    return v;
+}
+
 
 int main(void) {
 
