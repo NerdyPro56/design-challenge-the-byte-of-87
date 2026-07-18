@@ -75,5 +75,17 @@ def check_boot(post_flash):
     return ok
 results.append(check_boot(r1["flash"]))
 
+def check_tampered():
+    blob = bytearray(protect(7, "tampered", FW))
+    blob[200] ^= 1  # a ciphertext byte
+    r = emu.run(wire(bytes(blob)))
+    magic = struct.unpack("<I", r["flash"][METADATA_BASE+8:METADATA_BASE+12])[0]
+    print("\ntampered ciphertext (v7)")
+    print(f"  magic=0x{magic:08x} (want NOT 0x{BOOT_MAGIC:08x})")
+    ok = magic != BOOT_MAGIC
+    print(f"  => {'PASS' if ok else 'FAIL'}")
+    return ok
+results.append(check_tampered())
+
 print("ALL PASS" if all(results) else "SOME FAILED", f"({sum(results)}/{len(results)})")
 sys.exit(0 if all(results) else 1)
