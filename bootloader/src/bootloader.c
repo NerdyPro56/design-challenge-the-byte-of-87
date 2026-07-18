@@ -142,17 +142,13 @@ void load_firmware(void) {
     uint16_t msg_len = hdr[4] | (hdr[5] << 8);
     uint32_t total = size + msg_len;
 
-    uint32_t *slot = min_ver_slot();
-    uint16_t min_ver = 1; // fresh device floors at 1
-    if (slot != (uint32_t *)MIN_VER_BASE) {
-        min_ver = (uint16_t)slot[-1];
-    }
+    uint32_t *slot = min_ver_slot(); // free slot for the ratchet bump
 
     // unauth here bounds only tag is the gate
     if (size == 0 || size > MAX_FW_SIZE || msg_len == 0 || msg_len > MAX_MSG_LEN) {
         reject();
     }
-    if (ver != 0 && ver < min_ver) { // 0 = debug
+    if (ver != 0 && ver < cur_floor()) { // 0 = debug
         reject();
     }
 
