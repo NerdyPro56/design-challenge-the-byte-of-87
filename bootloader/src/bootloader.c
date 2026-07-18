@@ -193,15 +193,15 @@ void load_firmware(void) {
     for (uint32_t i = 0; i < 16; i++) {
         diff |= tag[i] ^ hdr[18 + i]; // no early out 16 bytes resist one fault
     }
-    if (ver != 0 && ver < min_ver) { diff |= 1; } // version verdict
-    if (sigok != 1)                { diff |= 2; } // signature verdict
+    if (ver != 0 && ver < cur_floor()) { diff |= 1; } // version verdict, floor re-read
+    if (sigok != 1)                    { diff |= 2; } // signature verdict
     // second fold separated so each verdict costs two skips
-    if (ver != 0 && ver < min_ver) { diff |= 1; }
-    if (sigok != 1)                { diff |= 2; }
+    if (ver != 0 && ver < cur_floor()) { diff |= 1; }
+    if (sigok != 1)                    { diff |= 2; }
     uint32_t magic = BOOT_MAGIC ^ diff; // bad verdict makes a magic boot refuses
 
     // ratchet before record a cut raises floor with nothing installed
-    if (diff == 0 && ver > min_ver && slot < (uint32_t *)METADATA_BASE) {
+    if (diff == 0 && ver > cur_floor() && slot < (uint32_t *)METADATA_BASE) {
         uint32_t w = ver;
         FlashProgram(&w, (uint32_t)slot, 4); // not program_flash it erases
     }
