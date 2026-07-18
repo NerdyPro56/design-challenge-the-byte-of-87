@@ -87,5 +87,10 @@ def check_tampered():
     return ok
 results.append(check_tampered())
 
+preload_floor5 = [(MIN_VER_BASE, struct.pack("<I", 5))]
+ok, _ = check("rollback attempt v3 with floor=5", 3, "old firmware", FW,
+              preload=preload_floor5, expect_commit=False)
+results.append(ok)
+
 print("ALL PASS" if all(results) else "SOME FAILED", f"({sum(results)}/{len(results)})")
 sys.exit(0 if all(results) else 1)
