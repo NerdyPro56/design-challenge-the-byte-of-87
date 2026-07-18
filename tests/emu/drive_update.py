@@ -62,5 +62,18 @@ results = []
 ok, r1 = check("update v5 (fresh device)", 5, "release five", FW)
 results.append(ok)
 
+def check_boot(post_flash):
+    r = emu.run(b"B", preload_flash=[(0, post_flash)], max_count=5_000_000)
+    out = r["boot_out"] if "boot_out" in r else r["uart_out"]
+    jumped = r["err"] is not None and 0x10000 <= r["err"][1] < 0x18000
+    print("\nboot the updated device (B)")
+    print(f"  uart_out tail: {out[-40:]!r}")
+    print(f"  printed release message: {b'release five' in out}")
+    print(f"  jumped into firmware region: {jumped} (PC=0x{r['err'][1]:08x})" if r['err'] else "  no jump/fault")
+    ok = (b"release five" in out) and jumped
+    print(f"  => {'PASS' if ok else 'FAIL'}")
+    return ok
+results.append(check_boot(r1["flash"]))
+
 print("ALL PASS" if all(results) else "SOME FAILED", f"({sum(results)}/{len(results)})")
 sys.exit(0 if all(results) else 1)
