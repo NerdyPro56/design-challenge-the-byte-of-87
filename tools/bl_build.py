@@ -22,13 +22,11 @@ BOOTLOADER_DIR = os.path.join(REPO_ROOT, "bootloader")
 
 
 def make_bootloader() -> bool:
-    # fw_key protects firmware in transit; the Ed25519 keypair signs it.
     key = get_random_bytes(32)
     sk = ECC.generate(curve="Ed25519")
     seed = sk.seed
     pub = sk.public_key().export_key(format="raw")
 
-    # Public values into the bootloader, private seed only into the factory secret file.
     with open(os.path.join(BOOTLOADER_DIR, "inc", "secrets.h"), "w") as f:
         f.write("#define FW_KEY {%s}\n" % ",".join(hex(b) for b in key))
         f.write("#define ED25519_PUB {%s}\n" % ",".join(hex(b) for b in pub))
@@ -37,8 +35,7 @@ def make_bootloader() -> bool:
 
     os.chdir(BOOTLOADER_DIR)
 
-    # Default locked; a developer sets ECTF_LOCK=0 to build a board that keeps its debug port.
-    lock = os.environ.get("ECTF_LOCK", "1")
+    lock = os.environ.get("ECTF_LOCK", "1") # default locked; 0 keeps the debug port
 
     subprocess.call("make clean", shell=True)
     status = subprocess.call("make LOCK=%s" % lock, shell=True)

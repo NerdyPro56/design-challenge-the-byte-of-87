@@ -94,7 +94,7 @@ def update(ser, infile, debug):
 
     print("Done writing firmware.")
 
-    # The bootloader ends its loop on the header byte-count, then acks the tag and signature verdict.
+    # final ack: the tag and signature verdict
     resp = ser.read(1)
     if resp != RESP_OK:
         raise RuntimeError("ERROR: bootloader rejected the image: {}".format(repr(resp)))

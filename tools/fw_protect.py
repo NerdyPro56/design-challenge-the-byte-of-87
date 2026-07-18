@@ -24,17 +24,14 @@ def protect_firmware(infile, outfile, version, message):
     key = blob[:32]
     sk = ECC.construct(curve="Ed25519", seed=blob[32:64])
 
-    # Null keeps an empty release message legal: msg_len is 1, never 0.
     msg = message.encode() + b"\x00"
     aad = struct.pack("<HHH", version, len(firmware), len(msg))
 
-    # Nonce is per image: the Poly1305 key derives from key+nonce and must never repeat.
-    nonce = get_random_bytes(12)
+    nonce = get_random_bytes(12) # per image; reuse under one key breaks confidentiality and the tag
     c = ChaCha20_Poly1305.new(key=key, nonce=nonce)
     c.update(aad)
     ct, tag = c.encrypt_and_digest(firmware + msg)
 
-    # Sign everything but the signature itself, so a key leak still cannot forge.
     sig = eddsa.new(sk, "rfc8032").sign(aad + nonce + tag + ct)
 
     with open(outfile, "wb") as f:
