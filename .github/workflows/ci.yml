@@ -55,3 +55,6 @@ jobs:
 
       - name: emulation end-to-end (unicorn runs bootloader.bin)
         run: python tests/emu/drive_update.py
+
+      - name: fault-injection regression (single-fault rollback must fail)
+        run: python tests/emu/fault_rollback.py
