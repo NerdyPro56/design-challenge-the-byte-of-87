@@ -40,3 +40,20 @@ if not SITES:
 def set_floor_one(uc):
     uc.reg_write(UC_ARM_REG_R0, 1) # this floor read returns 1 so v1 is not below it
 
+def v1_image():
+    fw = bytes((i * 9 + 5) & 0xff for i in range(1024))
+    with open(HERE + "/v1.bin", "wb") as f:
+        f.write(fw)
+    subprocess.check_call([PY, "fw_protect.py", "--infile", HERE + "/v1.bin",
+                           "--outfile", HERE + "/v1p.bin", "--version", "1",
+                           "--message", "rollback"], cwd=REPO + "/tools")
+    with open(HERE + "/v1p.bin", "rb") as f:
+        return f.read()
+
+def wire(blob):
+    hdr, ct = blob[:98], blob[98:]
+    s = b"U" + hdr
+    for i in range(0, len(ct), 256):
+        c = ct[i:i+256]
+        s += struct.pack(">H", len(c)) + c
+    return s
