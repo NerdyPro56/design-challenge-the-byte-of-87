@@ -57,3 +57,18 @@ def wire(blob):
         c = ct[i:i+256]
         s += struct.pack(">H", len(c)) + c
     return s
+
+def committed(sites):
+    hooks = [(a, set_floor_one) for a in sites]
+    r = emu.run(wire(v1_image()), preload_flash=FLOOR2, code_hooks=hooks)
+    magic = struct.unpack("<I", r["flash"][METADATA_BASE+8:METADATA_BASE+12])[0]
+    return magic == BOOT_MAGIC
+
+results = []
+for label, sites, want in (("none", [], False), ("single", SITES[:1], False), ("all", SITES, True)):
+    got = committed(sites)
+    print(f"{label:>6} floor fault: v1 committed = {got}  (want {want})")
+    results.append(got is want)
+
+print("PASS" if all(results) else "FAIL", f"({sum(results)}/{len(results)})")
+sys.exit(0 if all(results) else 1)
