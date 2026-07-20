@@ -12,11 +12,11 @@ from Crypto.Random import get_random_bytes
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 import fw_protect
 
-AAD = 6
-NONCE = 12
-TAG = 16
-SIG = 64
-HDR = 98
+AAD = 6    # ver, size, msg_len
+NONCE = 12 # chacha nonce
+TAG = 16   # poly1305
+SIG = 64   # ed25519
+HDR = 98   # sum of the above
 
 
 class HostTools(unittest.TestCase):
