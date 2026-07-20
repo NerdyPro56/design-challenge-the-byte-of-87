@@ -127,6 +127,21 @@ python tests/emu/fault_rollback.py
 
 `.github/workflows/ci.yml` runs the build and all of the above on every push.
 
+# Debugging
+
+Needs an unlocked board. A locked one has no SWD to attach to, by design.
+
+```bash
+openocd -f board/ti_ek-tm4c123gxl.cfg
+gdb-multiarch -ex "target extended-remote localhost:3333" bootloader/bin/bootloader.axf
+```
+
+```
+layout src
+list main
+break bootloader.c:97
+```
+
 Copyright 2024 The MITRE Corporation. ALL RIGHTS RESERVED <br>
 Approved for public release. Distribution unlimited 23-02181-25.
 
