@@ -48,6 +48,11 @@ class EmuBudget(unittest.TestCase):
         r = self.emu.run(self.wire, max_count=UPDATE_BUDGET)
         self.assertEqual(self.magic_of(r["flash"]), MAGIC)
 
+    def test_boot_is_crypto_free(self):
+        post = self.emu.run(self.wire)["flash"]
+        r = self.emu.run(b"B", preload_flash=[(0, post)], max_count=BOOT_BUDGET)
+        self.assertIn(b"budget", r["uart_out"])
+
 
 if __name__ == "__main__":
     unittest.main()
