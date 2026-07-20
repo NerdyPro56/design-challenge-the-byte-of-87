@@ -79,6 +79,18 @@ The default build locks the debug port. A dev build that keeps the port open:
 ECTF_LOCK=0 python bl_build.py
 ```
 
+## The lock is not instant
+
+Locking commits a value to `BOOTCFG`. The chip evaluates that register only at the next power-on reset, so a freshly-locked board keeps dumping over SWD until you unplug and replug it. Schedule that power cycle deliberately.
+
+Locked out, intentionally or not? Recover:
+
+```
+openocd -f board/ti_ek-tm4c123gxl.cfg -c "init; halt; stellaris recover; exit"
+```
+
+Power-cycle the board, then reflash from scratch. This mass-erases the whole chip; nothing on it survives, flags included. `stellaris mass_erase 0` does the same erase without needing a locked chip, useful for a clean slate mid-development.
+
 # Protect and Update Firmware
 
 ```
