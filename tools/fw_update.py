@@ -48,7 +48,7 @@ def send_metadata(ser, metadata, debug=False):
 
     # Send size and version to bootloader.
     if debug:
-        print(metadata)
+        print(metadata) # prints metadata for debugging purposes
 
     ser.write(metadata)
 
