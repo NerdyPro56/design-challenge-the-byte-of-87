@@ -34,8 +34,8 @@ FRAME_SIZE = 256
 
 
 def send_metadata(ser, metadata, debug=False):
-    assert(len(metadata) == 98)
-    version, size, msg_len = struct.unpack('<HHH', metadata[:6])
+    assert(len(metadata) == 98) # full header: aad+nonce+tag+sig
+    version, size, msg_len = struct.unpack('<HHH', metadata[:6]) # aad, for the progress print
     print(f"Version: {version}\nSize: {size} bytes\nMessage: {msg_len} bytes\n")
 
     # Handshake for update
@@ -78,8 +78,8 @@ def update(ser, infile, debug):
     with open(infile, "rb") as fp:
         firmware_blob = fp.read()
 
-    metadata = firmware_blob[:98]
-    firmware = firmware_blob[98:]
+    metadata = firmware_blob[:98] # header
+    firmware = firmware_blob[98:] # ciphertext
 
     send_metadata(ser, metadata, debug=debug)
 
@@ -87,7 +87,7 @@ def update(ser, infile, debug):
         data = firmware[frame_start : frame_start + FRAME_SIZE]
 
         # Construct frame.
-        frame = struct.pack('>H', len(data)) + data
+        frame = struct.pack('>H', len(data)) + data # 2-byte big-endian len, then bytes
 
         send_frame(ser, frame, debug=debug)
         print(f"Wrote frame {idx} ({len(frame)} bytes)")
