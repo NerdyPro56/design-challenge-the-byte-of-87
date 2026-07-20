@@ -44,6 +44,10 @@ class EmuBudget(unittest.TestCase):
     def magic_of(self, flash):
         return struct.unpack("<I", flash[0xFC08:0xFC0C])[0]
 
+    def test_update_commits_within_budget(self):
+        r = self.emu.run(self.wire, max_count=UPDATE_BUDGET)
+        self.assertEqual(self.magic_of(r["flash"]), MAGIC)
+
 
 if __name__ == "__main__":
     unittest.main()
