@@ -43,14 +43,14 @@ void boot_firmware(void);
 #define FLASH_WRITESIZE 4
 
 // Device metadata
-uint16_t * fw_size_address = (uint16_t *)(METADATA_BASE + 2);
+uint16_t * fw_size_address = (uint16_t *)(METADATA_BASE + 2); // record+2; boot reads size here
 
 // public keys from bl_build
-static const uint8_t fw_key[] = FW_KEY;
-static const uint8_t ed_pub[] = ED25519_PUB;
+static const uint8_t fw_key[] = FW_KEY;  // symmetric, must stay on-chip only
+static const uint8_t ed_pub[] = ED25519_PUB; // verify half; private seed never leaves factory
 
 // Firmware Buffer
-unsigned char data[FLASH_PAGESIZE];
+unsigned char data[FLASH_PAGESIZE]; // one-page staging, decrypt in place
 
 
 static void reject(void) {
@@ -127,20 +127,20 @@ int main(void) {
  * Load the firmware into flash.
  */
 void load_firmware(void) {
-    int read, sigok = 0;
+    int read, sigok = 0; // sigok 0 = fail closed
     uint8_t hdr[HDR_LEN], tag[16], rec[REC_LEN] __attribute__((aligned(4))); // word aligned
     ChaChaPoly_Aead aead;
     ed25519_key ekey;
-    uint32_t page = FW_BASE, idx = 0, got = 0, diff = 0;
+    uint32_t page = FW_BASE, idx = 0, got = 0, diff = 0; // page ptr, buf idx, bytes got, verdict
 
-    for (uint32_t i = 0; i < HDR_LEN; i++) {
+    for (uint32_t i = 0; i < HDR_LEN; i++) { // header is a fixed 98 bytes
         hdr[i] = uart_read(UART0, BLOCKING, &read);
     }
 
-    uint16_t ver = hdr[0] | (hdr[1] << 8);
+    uint16_t ver = hdr[0] | (hdr[1] << 8); // little endian, attacker-supplied until the tag
     uint16_t size = hdr[2] | (hdr[3] << 8);
     uint16_t msg_len = hdr[4] | (hdr[5] << 8);
-    uint32_t total = size + msg_len;
+    uint32_t total = size + msg_len; // bytes to stream: firmware then message
 
     uint32_t *slot = min_ver_slot(); // free slot for the ratchet bump
 
