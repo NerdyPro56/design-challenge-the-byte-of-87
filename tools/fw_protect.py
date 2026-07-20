@@ -20,22 +20,22 @@ def protect_firmware(infile, outfile, version, message):
         firmware = fp.read()
 
     with open("secret_build_output.txt", "rb") as f:
-        blob = f.read()
-    key = blob[:32]
-    sk = ECC.construct(curve="Ed25519", seed=blob[32:64])
+        blob = f.read()          # factory secrets from bl_build
+    key = blob[:32]              # fw_key
+    sk = ECC.construct(curve="Ed25519", seed=blob[32:64]) # signing seed, factory only
 
-    msg = message.encode() + b"\x00"
-    aad = struct.pack("<HHH", version, len(firmware), len(msg))
+    msg = message.encode() + b"\x00" # null keeps empty message legal: msg_len 1 not 0
+    aad = struct.pack("<HHH", version, len(firmware), len(msg)) # signed + tag-covered metadata
 
     nonce = get_random_bytes(12) # per image; reuse under one key breaks confidentiality and the tag
     c = ChaCha20_Poly1305.new(key=key, nonce=nonce)
-    c.update(aad)
+    c.update(aad)                # bind metadata into the tag
     ct, tag = c.encrypt_and_digest(firmware + msg)
 
-    sig = eddsa.new(sk, "rfc8032").sign(aad + nonce + tag + ct)
+    sig = eddsa.new(sk, "rfc8032").sign(aad + nonce + tag + ct) # covers all but the sig itself
 
     with open(outfile, "wb") as f:
-        f.write(aad + nonce + tag + sig + ct)
+        f.write(aad + nonce + tag + sig + ct) # 98-byte header then ciphertext
 
 
 if __name__ == "__main__":
