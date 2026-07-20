@@ -54,6 +54,15 @@ Do not worry, poor employee. Your call for help has reached thee! Fear not your 
 
 (obtained via `tree --gitignore -I lib`)
 
+# Prerequisites
+
+- `arm-none-eabi-gcc` toolchain
+- `lm4flash` to flash, `openocd` to debug and to recover a locked board
+- a venv at `tools/.venv`: `pip install pycryptodome pyserial unicorn`
+- wolfSSL as a submodule: `git submodule update --init --recursive`
+
+The wolfssl target is already enabled in `bootloader/Makefile`. `user_settings.h` under `bootloader/inc` configures which primitives build in; leave it alone without a specific reason to change it.
+
 # Build and Flash
 
 ```
