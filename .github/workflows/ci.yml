@@ -24,12 +24,12 @@ jobs:
       - name: python deps
         run: pip install pycryptodome pyserial unicorn
 
-      - name: host tool unit tests
-        run: python -m unittest discover -s tests -v
-
       - name: build bootloader
         working-directory: tools
         run: python bl_build.py
+
+      - name: unit tests (wire contract + emulator budgets)
+        run: python -m unittest discover -s tests -v
 
       - name: image fits under the ratchet ceiling
         run: |
