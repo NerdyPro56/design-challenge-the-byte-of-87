@@ -70,6 +70,19 @@ The default build locks the debug port. A dev build that keeps the port open:
 ECTF_LOCK=0 python bl_build.py
 ```
 
+# Protect and Update Firmware
+
+```
+cd ../firmware && make
+cd ../tools
+python fw_protect.py --infile ../firmware/bin/firmware.bin --outfile fw.bin --version 2 --message "hello"
+python fw_update.py --firmware fw.bin --port /dev/tty.usbmodemXXXX
+```
+
+Version 0 always installs and leaves the minimum version unchanged. Every other version must be at or above the last one the board accepted. A rejected update resets the board back into the bootloader automatically. Only a successful **B**oot needs a physical RESET, since firmware has no path back to the bootloader.
+
+Commit takes several seconds on the stock 16MHz clock, the Ed25519 verify running at that speed. Wait for the final ack before assuming failure.
+
 Copyright 2024 The MITRE Corporation. ALL RIGHTS RESERVED <br>
 Approved for public release. Distribution unlimited 23-02181-25.
 
