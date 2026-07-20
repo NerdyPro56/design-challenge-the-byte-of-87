@@ -224,7 +224,7 @@ void load_firmware(void) {
  * This functions performs an erase of the specified flash page before writing
  * the data.
  */
-long program_flash(void* page_addr, unsigned char * data, unsigned int data_len) {
+long program_flash(void* page_addr, unsigned char * data, unsigned int data_len) { //flashes the program
     uint32_t word = 0;
     int ret;
     int i;
