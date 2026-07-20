@@ -56,7 +56,8 @@ class Bench:
 def run(uart_in=b"", max_count=600_000_000, preload_flash=None, code_hooks=None):
     global flash
     flash = bytearray(b"\xff" * FLASH_SIZE)
-    code = open(BIN, "rb").read()
+    with open(BIN, "rb") as f:
+        code = f.read()
     flash[:len(code)] = code
     if preload_flash:
         for addr, data in preload_flash:
