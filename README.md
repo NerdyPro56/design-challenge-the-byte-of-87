@@ -17,6 +17,43 @@ Please, send help. I need to escape this relentless cycle. I need a team of tale
 
 Do not worry, poor employee. Your call for help has reached thee! Fear not your bugs, nor dread the deploy, us interns come, to code your buoy!
 
+# Project Structure
+```
+├── bootloader
+│   ├── bin
+│   ├── bootloader.ld
+│   ├── inc
+│   │   ├── bootloader.h
+│   │   └── user_settings.h
+│   ├── Makefile
+│   └── src
+│       ├── bootloader.c
+│       └── startup_gcc.c
+├── firmware
+│   ├── bin
+│   ├── firmware.ld
+│   ├── Makefile
+│   └── src
+│       └── firmware.c
+├── makedefs
+├── README.md
+├── tests
+│   ├── emu
+│   │   ├── drive_update.py
+│   │   ├── emu.py
+│   │   └── fault_rollback.py
+│   ├── test_emu_budget.py
+│   └── test_host_tools.py
+└── tools
+    ├── __init__.py
+    ├── bl_build.py
+    ├── fw_protect.py
+    ├── fw_update.py
+    └── util.py
+```
+
+(obtained via `tree --gitignore -I lib`)
+
 # Build and Flash
 
 ```
