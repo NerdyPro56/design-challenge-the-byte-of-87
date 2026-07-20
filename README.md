@@ -112,6 +112,21 @@ python -m serial.tools.miniterm /dev/tty.usbmodemXXXX 115200
 
 `U` updates, `B` boots. `Ctrl-]` exits miniterm, `Ctrl-A X` exits picocom.
 
+# Tests
+
+```
+python -m unittest discover -s tests
+```
+
+Wire-contract tests need only pycryptodome. Emulator tests run the compiled `bootloader.bin` under Unicorn; build first. `tests/emu/fault_rollback.py` injects a value fault on the minimum-version read and checks that a single fault still cannot roll a version back. Run it directly to see what it does:
+
+```
+python tests/emu/drive_update.py
+python tests/emu/fault_rollback.py
+```
+
+`.github/workflows/ci.yml` runs the build and all of the above on every push.
+
 Copyright 2024 The MITRE Corporation. ALL RIGHTS RESERVED <br>
 Approved for public release. Distribution unlimited 23-02181-25.
 
