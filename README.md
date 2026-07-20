@@ -89,7 +89,13 @@ Locked out, intentionally or not? Recover:
 openocd -f board/ti_ek-tm4c123gxl.cfg -c "init; halt; stellaris recover; exit"
 ```
 
-Power-cycle the board, then reflash from scratch. This mass-erases the whole chip; nothing on it survives, flags included. `stellaris mass_erase 0` does the same erase without needing a locked chip, useful for a clean slate mid-development.
+Power-cycle the board, then reflash from scratch. This mass-erases the whole chip; nothing on it survives, flags included.
+
+A clean slate without a locked chip, same erase, no recovery needed first:
+
+```
+openocd -f board/ti_ek-tm4c123gxl.cfg -c "init; halt; stellaris mass_erase 0; exit"
+```
 
 # Protect and Update Firmware
 
