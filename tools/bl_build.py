@@ -22,16 +22,16 @@ BOOTLOADER_DIR = os.path.join(REPO_ROOT, "bootloader")
 
 
 def make_bootloader() -> bool:
-    key = get_random_bytes(32)
+    key = get_random_bytes(32)   # fw_key, fresh per build
     sk = ECC.generate(curve="Ed25519")
-    seed = sk.seed
-    pub = sk.public_key().export_key(format="raw")
+    seed = sk.seed               # private half, factory only
+    pub = sk.public_key().export_key(format="raw") # public half, into the image
 
-    with open(os.path.join(BOOTLOADER_DIR, "inc", "secrets.h"), "w") as f:
+    with open(os.path.join(BOOTLOADER_DIR, "inc", "secrets.h"), "w") as f: # compiled into the bootloader
         f.write("#define FW_KEY {%s}\n" % ",".join(hex(b) for b in key))
         f.write("#define ED25519_PUB {%s}\n" % ",".join(hex(b) for b in pub))
-    with open(os.path.join(REPO_ROOT, "tools", "secret_build_output.txt"), "wb") as f:
-        f.write(key + seed)
+    with open(os.path.join(REPO_ROOT, "tools", "secret_build_output.txt"), "wb") as f: # fw_protect side
+        f.write(key + seed)      # 32 fw_key + 32 seed; the seed never reaches the chip
 
     os.chdir(BOOTLOADER_DIR)
 
