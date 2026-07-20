@@ -104,6 +104,14 @@ Version 0 always installs and leaves the minimum version unchanged. Every other 
 
 Commit takes several seconds on the stock 16MHz clock, the Ed25519 verify running at that speed. Wait for the final ack before assuming failure.
 
+# Interacting with the Bootloader
+
+```
+python -m serial.tools.miniterm /dev/tty.usbmodemXXXX 115200
+```
+
+`U` updates, `B` boots. `Ctrl-]` exits miniterm, `Ctrl-A X` exits picocom.
+
 Copyright 2024 The MITRE Corporation. ALL RIGHTS RESERVED <br>
 Approved for public release. Distribution unlimited 23-02181-25.
 
