@@ -263,7 +263,7 @@ long program_flash(void* page_addr, unsigned char * data, unsigned int data_len)
 }
 
 void boot_firmware(void) {
-    uint16_t size = *fw_size_address;
+    uint16_t size = *fw_size_address; // from the committed record
     uint16_t msg_len = *(uint16_t *)(METADATA_BASE + 4);
 
     // fold magic+bounds twice erased page fails
@@ -284,6 +284,6 @@ void boot_firmware(void) {
     }
 
     if (bad) { while (1) { } } // recheck before jump
-    __asm("LDR R0,=0x10001\n\t"
+    __asm("LDR R0,=0x10001\n\t"  // 0x10001 = FW_BASE + thumb bit
           "BX R0\n\t");
 }
