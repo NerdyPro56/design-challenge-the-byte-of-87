@@ -125,6 +125,27 @@ $store.Close()
 pnputil.exe /add-driver ".\vendor\ti\icdi\stellaris_icdi_drivers\stellaris_icdi_debug.inf" /install
 ```
 
+Unplug and replug. Confirm the ICDI interface:
+
+```powershell
+Get-PnpDevice -PresentOnly | Where-Object InstanceId -Like 'USB\VID_1CBE&PID_00FD*'
+```
+
+```powershell
+& 'C:\Program Files (x86)\Texas Instruments\Stellaris\LM Flash Programmer\LMFlash.exe'
+```
+
+In **Other Utilities**, select **Debug Port Unlock** and **TM4C123**:
+
+1. Disconnect power.
+2. Hold RESET.
+3. Reconnect power.
+4. Run Unlock.
+5. Release RESET when prompted.
+6. Unplug and replug.
+
+Unlock erases flash and restores `BOOTCFG`.
+
 # Protect and Update Firmware
 
 ```
