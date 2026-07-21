@@ -57,45 +57,53 @@ Do not worry, poor employee. Your call for help has reached thee! Fear not your 
 # Prerequisites
 
 - `arm-none-eabi-gcc` toolchain
-- `lm4flash` to flash, `openocd` to debug and to recover a locked board
+- `lm4flash` to flash an unlocked board
+- `openocd` to debug or erase an unlocked board
+- TI LM Flash Programmer on Windows to unlock a latched board
 - a venv at `tools/.venv`: `pip install pycryptodome pyserial unicorn`
 - wolfSSL as a submodule: `git submodule update --init --recursive`
 
-The wolfssl target is already enabled in `bootloader/Makefile`. `user_settings.h` under `bootloader/inc` configures which primitives build in; leave it alone without a specific reason to change it.
+`bootloader/Makefile` builds wolfSSL. `bootloader/inc/user_settings.h` selects its primitives.
 
 # Build and Flash
 
 ```
 cd tools
-python bl_build.py
+python bl_build.py                       # production: debug lock enabled
 lm4flash ../bootloader/bin/bootloader.bin
 ```
 
-Every run of `bl_build.py` generates a fresh key pair and writes `bootloader/inc/secrets.h` plus `tools/secret_build_output.txt`. Neither is tracked in git; both are needed by `fw_protect.py`, so keep them.
+Each build generates new keys:
 
-The default build locks the debug port. A dev build that keeps the port open:
+- `bootloader/inc/secrets.h`: device key and verification key
+- `tools/secret_build_output.txt`: encryption key and signing seed
+
+Git ignores both files. Preserve them with the build they belong to.
+
+A development build leaves SWD open:
 
 ```
 ECTF_LOCK=0 python bl_build.py
+lm4flash ../bootloader/bin/bootloader.bin
 ```
 
-## The lock is not instant
+## Debug Lock and Recovery
 
-Locking commits a value to `BOOTCFG`. The chip evaluates that register only at the next power-on reset, so a freshly-locked board keeps dumping over SWD until you unplug and replug it. Schedule that power cycle deliberately.
+The production build clears `BOOTCFG.DBG1`. An unplug and replug latches the lock. RESET does not.
 
-Locked out, intentionally or not? Recover:
+Before the latch:
 
 ```
+# erase flash and committed user registers
 openocd -f board/ti_ek-tm4c123gxl.cfg -c "init; halt; stellaris recover; exit"
-```
 
-Power-cycle the board, then reflash from scratch. This mass-erases the whole chip; nothing on it survives, flags included.
-
-A clean slate without a locked chip, same erase, no recovery needed first:
-
-```
+# erase an unlocked target
 openocd -f board/ti_ek-tm4c123gxl.cfg -c "init; halt; stellaris mass_erase 0; exit"
 ```
+
+Power-cycle after `stellaris recover`.
+
+After the latch, OpenOCD cannot open the ICDI debug channel. Use TI LM Flash Programmer on Windows. Installers live under `vendor/ti/`.
 
 # Protect and Update Firmware
 
@@ -106,9 +114,9 @@ python fw_protect.py --infile ../firmware/bin/firmware.bin --outfile fw.bin --ve
 python fw_update.py --firmware fw.bin --port /dev/tty.usbmodemXXXX
 ```
 
-Version 0 always installs and leaves the minimum version unchanged. Every other version must be at or above the last one the board accepted. A rejected update resets the board back into the bootloader automatically. Only a successful **B**oot needs a physical RESET, since firmware has no path back to the bootloader.
+Version 0 installs without changing `min_ver`. Other versions must meet or exceed `min_ver`. Rejection resets into the bootloader. After **B**oot, press RESET to return.
 
-Commit takes several seconds on the stock 16MHz clock, the Ed25519 verify running at that speed. Wait for the final ack before assuming failure.
+Ed25519 verification takes about eight seconds at 16 MHz. Success ends with the final ack.
 
 # Interacting with the Bootloader
 
@@ -124,18 +132,18 @@ python -m serial.tools.miniterm /dev/tty.usbmodemXXXX 115200
 python -m unittest discover -s tests
 ```
 
-Wire-contract tests need only pycryptodome. Emulator tests run the compiled `bootloader.bin` under Unicorn; build first. `tests/emu/fault_rollback.py` injects a value fault on the minimum-version read and checks that a single fault still cannot roll a version back. Run it directly to see what it does:
+Wire tests use pycryptodome. Emulator tests run `bootloader.bin` under Unicorn. Build first. The fault test corrupts one `min_ver` read; the remaining reads reject rollback:
 
 ```
 python tests/emu/drive_update.py
 python tests/emu/fault_rollback.py
 ```
 
-`.github/workflows/ci.yml` runs the build and all of the above on every push.
+`.github/workflows/ci.yml` runs these checks on each push.
 
 # Debugging
 
-Needs an unlocked board. A locked one has no SWD to attach to, by design.
+Debugging requires an unlocked board.
 
 ```bash
 openocd -f board/ti_ek-tm4c123gxl.cfg
