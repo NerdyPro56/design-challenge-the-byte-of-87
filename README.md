@@ -105,6 +105,26 @@ Power-cycle after `stellaris recover`.
 
 After the latch, OpenOCD cannot open the ICDI debug channel. Use TI LM Flash Programmer on Windows. Installers live under `vendor/ti/`.
 
+Run PowerShell as Administrator from the repository root:
+
+```powershell
+Expand-Archive .\vendor\ti\LMFlashProgrammer_1613.zip .\vendor\ti\lmflash
+msiexec.exe /i ".\vendor\ti\lmflash\LMFlashProgrammer.msi"
+Expand-Archive .\vendor\ti\stellaris_icdi_drivers_spmc016a.zip .\vendor\ti\icdi
+pnputil.exe /add-driver ".\vendor\ti\icdi\stellaris_icdi_drivers\stellaris_icdi_debug.inf" /install
+```
+
+Catalog trust error? Trust the archived signer, then repeat `pnputil`:
+
+```powershell
+$cat = Get-AuthenticodeSignature ".\vendor\ti\icdi\stellaris_icdi_drivers\stellaris_icdi_debug.cat"
+$store = [System.Security.Cryptography.X509Certificates.X509Store]::new("TrustedPublisher", "LocalMachine")
+$store.Open("ReadWrite")
+$store.Add($cat.SignerCertificate)
+$store.Close()
+pnputil.exe /add-driver ".\vendor\ti\icdi\stellaris_icdi_drivers\stellaris_icdi_debug.inf" /install
+```
+
 # Protect and Update Firmware
 
 ```
