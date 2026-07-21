@@ -146,6 +146,19 @@ In **Other Utilities**, select **Debug Port Unlock** and **TM4C123**:
 
 Unlock erases flash and restores `BOOTCFG`.
 
+Verify and reflash from macOS or Linux:
+
+```bash
+# SWD must enumerate again; BOOTCFG should read 0xfffffffe
+openocd -f board/ti_ek-tm4c123gxl.cfg \
+  -c "init; halt; mdw 0x400FE1D0 1; exit"
+cd tools
+ECTF_LOCK=0 python bl_build.py
+lm4flash ../bootloader/bin/bootloader.bin
+```
+
+The lock closes SWD. UART updates remain available.
+
 # Protect and Update Firmware
 
 ```
