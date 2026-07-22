@@ -89,7 +89,7 @@ lm4flash ../bootloader/bin/bootloader.bin
 
 ## Debug Lock and Recovery
 
-The production build clears `BOOTCFG.DBG1`. An unplug and replug latches the lock. RESET does not.
+The production build clears `BOOTCFG.DBG1` on first boot, which loading v2 over UART performs. An unplug and replug latches the lock. RESET does not.
 
 Before the latch:
 
