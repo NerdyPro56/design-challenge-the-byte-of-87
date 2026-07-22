@@ -32,6 +32,7 @@ void boot_firmware(void);
 #define METADATA_BASE 0xFC00 // boot record
 #define MIN_VER_BASE  0xF800 // ratchet page never erased
 #define FW_BASE       0x10000 // firmware base
+#define SCRATCH_BASE  0x18000 // ciphertext staging; fw_key runs only after the signature verifies
 #define BOOT_MAGIC    0x544F4F42 // verified install writes it
 #define HDR_LEN       98 // aad6 nonce12 tag16 sig64
 #define SIG_OFF       34 // sig offset
@@ -131,7 +132,7 @@ void load_firmware(void) {
     uint8_t hdr[HDR_LEN], tag[16], rec[REC_LEN] __attribute__((aligned(4))); // word aligned
     ChaChaPoly_Aead aead;
     ed25519_key ekey;
-    uint32_t page = FW_BASE, idx = 0, got = 0, diff = 0; // page ptr, buf idx, bytes got, verdict
+    uint32_t page = FW_BASE, spage = SCRATCH_BASE, idx = 0, got = 0, diff = 0; // fw ptr, scratch ptr, buf idx, bytes got, verdict
 
     for (uint32_t i = 0; i < HDR_LEN; i++) { // header is a fixed 98 bytes
         hdr[i] = uart_read(UART0, BLOCKING, &read);
@@ -144,7 +145,7 @@ void load_firmware(void) {
 
     uint32_t *slot = min_ver_slot(); // free slot for the ratchet bump
 
-    // unauth here bounds only tag is the gate
+    // unauth here bounds; signature then tag are the gate
     if (size == 0 || size > MAX_FW_SIZE || msg_len == 0 || msg_len > MAX_MSG_LEN) {
         reject();
     }
@@ -152,11 +153,9 @@ void load_firmware(void) {
         reject();
     }
 
-    wc_ChaCha20Poly1305_Init(&aead, fw_key, hdr + 6, CHACHA20_POLY1305_AEAD_DECRYPT); // nonce = hdr+6
-    wc_ChaCha20Poly1305_UpdateAad(&aead, hdr, 6); // aad relabel breaks tag
-
+    // pass one: sign over the ciphertext and stage it; fw_key is never run on this data
     wc_ed25519_init(&ekey);
-    wc_ed25519_import_public(ed_pub, ED25519_PUB_KEY_SIZE, &ekey); // backstops a leaked fw_key
+    wc_ed25519_import_public(ed_pub, ED25519_PUB_KEY_SIZE, &ekey); // gates the fw_key decrypt below
     wc_ed25519_verify_msg_init(hdr + SIG_OFF, ED25519_SIG_SIZE, &ekey, (byte)Ed25519, NULL, 0);
     wc_ed25519_verify_msg_update(hdr, SIG_OFF, &ekey); // signed prefix: aad+nonce+tag
 
@@ -173,31 +172,53 @@ void load_firmware(void) {
         for (uint32_t i = 0; i < n; i++) { // fill the page buffer
             data[idx + i] = uart_read(UART0, BLOCKING, &read);
         }
-        wc_ed25519_verify_msg_update(data + idx, n, &ekey); // sig over ct before decrypt
-        wc_ChaCha20Poly1305_UpdateData(&aead, data + idx, data + idx, n); // in place
+        wc_ed25519_verify_msg_update(data + idx, n, &ekey); // signature over the ciphertext
         idx += n;
         got += n;
 
         if (idx == FLASH_PAGESIZE || got == total) { // frame size divides page
-            if (program_flash((uint8_t *)page, data, idx)) {
+            if (program_flash((uint8_t *)spage, data, idx)) { // stage ciphertext, not decrypted
                 reject();
             }
-            page += FLASH_PAGESIZE;
+            spage += FLASH_PAGESIZE;
             idx = 0;
         }
         uart_write(UART0, OK);
     }
 
-    wc_ChaCha20Poly1305_Final(&aead, tag); // tag computed over the stream
     wc_ed25519_verify_msg_final(hdr + SIG_OFF, ED25519_SIG_SIZE, &sigok, &ekey); // sigok 1 = valid
-    for (uint32_t i = 0; i < 16; i++) {
-        diff |= tag[i] ^ hdr[18 + i]; // no early out 16 bytes resist one fault
-    }
+
+    // version and signature verdicts fold first, each twice so a skip costs two faults; fw_key still idle
     if (ver != 0 && ver < cur_floor()) { diff |= 1; } // version verdict, floor re-read
     if (sigok != 1)                    { diff |= 2; } // signature verdict
     // second fold separated so each verdict costs two skips
     if (ver != 0 && ver < cur_floor()) { diff |= 1; }
     if (sigok != 1)                    { diff |= 2; }
+
+    // pass two: only a validly signed image reaches fw_key; decrypt scratch in place into the fw region
+    if (diff == 0) {
+        wc_ChaCha20Poly1305_Init(&aead, fw_key, hdr + 6, CHACHA20_POLY1305_AEAD_DECRYPT); // nonce = hdr+6
+        wc_ChaCha20Poly1305_UpdateAad(&aead, hdr, 6); // aad relabel breaks tag
+        spage = SCRATCH_BASE;
+        got = 0;
+        while (got < total) {
+            uint32_t n = total - got; // one page at a time out of scratch
+            if (n > FLASH_PAGESIZE) { n = FLASH_PAGESIZE; }
+            memcpy(data, (const void *)spage, n); // read the staged ciphertext
+            wc_ChaCha20Poly1305_UpdateData(&aead, data, data, n); // decrypt in place
+            if (program_flash((uint8_t *)page, data, n)) {
+                reject();
+            }
+            page += FLASH_PAGESIZE;
+            spage += FLASH_PAGESIZE;
+            got += n;
+        }
+        wc_ChaCha20Poly1305_Final(&aead, tag); // tag over the staged stream
+        for (uint32_t i = 0; i < 16; i++) {
+            diff |= tag[i] ^ hdr[18 + i]; // no early out 16 bytes resist one fault
+        }
+    }
+
     uint32_t magic = BOOT_MAGIC ^ diff; // bad verdict makes a magic boot refuses
 
     // ratchet before record a cut raises floor with nothing installed
