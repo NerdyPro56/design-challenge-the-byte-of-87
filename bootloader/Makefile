@@ -23,6 +23,9 @@ CFLAGS+=-DWOLFSSL_USER_SETTINGS
 LOCK?=1
 CFLAGS+=-DLOCK=${LOCK}
 
+# -DLOCK is invisible to make; force a recompile when it changes
+$(shell [ -f bin/.lock-${LOCK} ] || { mkdir -p bin; rm -f bin/.lock-* src/bootloader.o; touch bin/.lock-${LOCK}; })
+
 all: bootloader
 
 bootloader: driverlib

@@ -24,6 +24,7 @@ just a zero
 
 import argparse
 import struct
+import time
 import serial
 
 from util import *
@@ -31,6 +32,8 @@ from util import *
 
 RESP_OK = b"\x00"
 FRAME_SIZE = 256
+RESP_TIMEOUT = 30 # commit ack waits on ed25519 + two-pass decrypt: 12 s at full size
+HANDSHAKE_TIMEOUT = 10
 
 
 def send_metadata(ser, metadata, debug=False):
@@ -38,13 +41,20 @@ def send_metadata(ser, metadata, debug=False):
     version, size, msg_len = struct.unpack('<HHH', metadata[:6]) # aad, for the progress print
     print(f"Version: {version}\nSize: {size} bytes\nMessage: {msg_len} bytes\n")
 
+    ser.reset_input_buffer() # a reject resets the device, and its banner carries three 'U's
+
     # Handshake for update
     ser.write(b"U")
 
     print("Waiting for bootloader to enter update mode...")
-    while ser.read(1).decode() != "U":
-        print("got a byte")
-        pass
+    ser.timeout = 1 # short reads, else the deadline below rounds up to RESP_TIMEOUT
+    deadline = time.time() + HANDSHAKE_TIMEOUT
+    while ser.read(1) != b"U":
+        if time.time() > deadline: # stranded mid-header: it will never answer
+            raise RuntimeError(
+                "ERROR: no handshake from the bootloader after {}s. "
+                "Press RESET and retry.".format(HANDSHAKE_TIMEOUT))
+    ser.timeout = RESP_TIMEOUT # frames and the commit ack need the long bound
 
     # Send size and version to bootloader.
     if debug:
@@ -110,7 +120,7 @@ if __name__ == "__main__":
     parser.add_argument("--debug", help="Enable debugging messages.", action="store_true")
     args = parser.parse_args()
 
-    ser = serial.Serial(args.port, 115200)
+    ser = serial.Serial(args.port, 115200, timeout=RESP_TIMEOUT)
 
     update(ser=ser, infile=args.firmware, debug=args.debug)
     ser.close()

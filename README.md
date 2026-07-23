@@ -19,6 +19,17 @@ Please, send help. I need to escape this relentless cycle. I need a team of tale
 
 Do not worry, poor employee. Your call for help has reached thee! Fear not your bugs, nor dread the deploy, us interns come, to code your buoy!
 
+# Read This First
+
+```
+ECTF_LOCK=0 python bl_build.py    # dev: keeps lm4flash and openocd
+python bl_build.py                # handoff: SWD dies at the next power cycle
+```
+
+Locked boards still update and boot. Only SWD closes; recovery is TI LM Flash Programmer on Windows.
+
+`fw_update.py` hanging with no output means a stray byte left the bootloader mid-header. Press RESET.
+
 # Project Structure
 ```
 ├── bootloader
@@ -67,31 +78,89 @@ Do not worry, poor employee. Your call for help has reached thee! Fear not your 
 
 `bootloader/Makefile` builds wolfSSL. `bootloader/inc/user_settings.h` selects its primitives.
 
-# Build and Flash
+# Host Tool API
+
+Three tools, three command lines, fixed by the rules. Run each from `tools/`. Exit zero means success.
+
+```
+python bl_build.py
+python fw_protect.py --infile <in.bin> --outfile <out.bin> --version <n> --message <str>
+python fw_update.py  --port <serial port> --firmware <out.bin>
+```
+
+Limits: firmware 30720 B, message 1024 B, version 0 to 65535. `ECTF_LOCK` is an environment variable, not a flag, so the mandated command line stays the mandated command line.
+
+# The Factory Sequence
 
 ```
 cd tools
-python bl_build.py                       # production: debug lock enabled
-lm4flash ../bootloader/bin/bootloader.bin
+python bl_build.py                                  # keys + bootloader.bin; lock ON
+lm4flash ../bootloader/bin/bootloader.bin           # needs the port still open
+python fw_protect.py --infile ../firmware/bin/firmware.bin \
+    --outfile init_fw_prot.bin --version 2 --message "Firmware V2"
+python fw_update.py --port /dev/tty.usbmodemXXXX --firmware init_fw_prot.bin
+                                                    # unplug/replug: lock latches HERE
 ```
 
-Each build generates new keys:
+- Flash, boot, power cycle, in that order. The lock latches on the third.
+- Flags go in the firmware binary and the release message.
+- Keys are per build. Protect with the build that flashed the board.
 
-- `bootloader/inc/secrets.h`: device key and verification key
-- `tools/secret_build_output.txt`: encryption key and signing seed
-
-Git ignores both files. Preserve them with the build they belong to.
-
-A development build leaves SWD open:
+# Build and Flash
 
 ```
-ECTF_LOCK=0 python bl_build.py
-lm4flash ../bootloader/bin/bootloader.bin
+ECTF_LOCK=0 python bl_build.py && lm4flash ../bootloader/bin/bootloader.bin   # reflashable
+python bl_build.py             && lm4flash ../bootloader/bin/bootloader.bin   # one-way
 ```
 
-## Debug Lock and Recovery
+# Protect and Update Firmware
 
-The production build clears `BOOTCFG.DBG1` on first boot, which loading v2 over UART performs. An unplug and replug latches the lock. RESET does not.
+```
+cd ../firmware && make
+cd ../tools
+python fw_protect.py --infile ../firmware/bin/firmware.bin \
+    --outfile fw.bin --version 2 --message "hello"
+python fw_update.py --firmware fw.bin --port /dev/tty.usbmodemXXXX
+```
+
+```
+Wrote frame 11 (64 bytes)
+Done writing firmware.        # exit 0. a rejection raises and exits 1
+```
+
+~8-12 s; the crypto takes a while. Rerun freely. If it acts up, RESET.
+
+```
+--version 0    # installs at any floor, never raises it
+--version 1    # below min_ver: refused at the header, before anything is erased
+```
+
+A bad signature is refused after the erase, so the device reports no firmware until a good image lands.
+
+# Interacting with the Bootloader
+
+```
+python -m serial.tools.miniterm /dev/tty.usbmodemXXXX 115200
+```
+
+`U` updates, `B` boots. `Ctrl-]` quits miniterm. Close it before `fw_update.py`.
+
+# When It Looks Bricked
+
+| Symptom | Cause | Cure |
+| --- | --- | --- |
+| `no handshake from the bootloader after 10s` | stranded mid-header | press RESET, rerun |
+| `Bootloader responded with b'W'` | image refused; `W` opens the reset banner, it is not a reply | check the version, and that the keys match the flashed build |
+| `No firmware loaded. Please RESET device.` | no committed boot record | rerun `fw_update.py` with a valid image |
+| `B` does nothing | firmware already running | press RESET |
+| `lm4flash` hangs forever | debug port latched | TI unlock, below |
+| `openocd`: `query supported failed: 0x7` | debug port latched | TI unlock, below |
+
+`reject()` resets before the `ERROR` byte leaves the FIFO, so you see the banner instead. Any non-`OK` reply exits 1.
+
+# Debug Lock and Recovery
+
+The production build clears `BOOTCFG.DBG1` on the first boot. An unplug and replug latches it. RESET does not.
 
 Before the latch:
 
@@ -105,7 +174,7 @@ openocd -f board/ti_ek-tm4c123gxl.cfg -c "init; halt; stellaris mass_erase 0; ex
 
 Power-cycle after `stellaris recover`.
 
-After the latch, OpenOCD cannot open the ICDI debug channel. Use TI LM Flash Programmer on Windows. Installers live under `vendor/ti/`.
+After the latch, only the TI unlock works. `openocd` and `lm4flash` both fail. The serial port still enumerates; that is the UART bridge, not the debug channel.
 
 Run PowerShell as Administrator from the repository root:
 
@@ -146,7 +215,7 @@ In **Other Utilities**, select **Debug Port Unlock** and **TM4C123**:
 5. Release RESET when prompted.
 6. Unplug and replug.
 
-Unlock erases flash and restores `BOOTCFG`.
+Unlock erases flash and restores `BOOTCFG`. The erase runs before the port reopens, so the keys are gone before JTAG is usable again. There is no partial unlock.
 
 Verify and reflash from macOS or Linux:
 
@@ -159,28 +228,7 @@ ECTF_LOCK=0 python bl_build.py
 lm4flash ../bootloader/bin/bootloader.bin
 ```
 
-The lock closes SWD. UART updates remain available.
-
-# Protect and Update Firmware
-
-```
-cd ../firmware && make
-cd ../tools
-python fw_protect.py --infile ../firmware/bin/firmware.bin --outfile fw.bin --version 2 --message "hello"
-python fw_update.py --firmware fw.bin --port /dev/tty.usbmodemXXXX
-```
-
-Version 0 installs without changing `min_ver`. Other versions must meet or exceed `min_ver`. Rejection resets into the bootloader. After **B**oot, press RESET to return.
-
-Ed25519 verification takes about eight seconds at 16 MHz. Success ends with the final ack.
-
-# Interacting with the Bootloader
-
-```
-python -m serial.tools.miniterm /dev/tty.usbmodemXXXX 115200
-```
-
-`U` updates, `B` boots. `Ctrl-]` exits miniterm, `Ctrl-A X` exits picocom.
+`BOOTCFG` reads the value latched at power-on, not the value just committed. A freshly locked board still reads `0xfffffffe` until it is power-cycled. Do not read that as a failed commit.
 
 # Tests
 
@@ -195,7 +243,16 @@ python tests/emu/drive_update.py
 python tests/emu/fault_rollback.py
 ```
 
-`.github/workflows/ci.yml` runs these checks on each push.
+`.github/workflows/ci.yml` runs these on each push, plus the image size ceiling and a symbol check.
+
+The symbol check earns its keep. `bootloader/Makefile` force-lists every driverlib object on the link line, so only `--gc-sections` keeps uDMA, USB, CAN and the rest out of flash. uDMA is a flash-to-UART copy engine, a gadget worth denying anyone who gets execution. Nothing calls them, so a hit means the strip broke.
+
+```
+arm-none-eabi-nm --defined-only bootloader/bin/bootloader.axf \
+  | grep -E ' [TtWw] (uDMA|USB|CAN|EMAC|EPI|LCD|QEI|PWM|SHAMD5|Hibernate|OneWire)'
+```
+
+Silence is a pass.
 
 # Debugging
 
@@ -211,6 +268,19 @@ layout src
 list main
 break bootloader.c:97
 ```
+
+Read the boot state over SWD while unlocked:
+
+```bash
+openocd -f board/ti_ek-tm4c123gxl.cfg -c \
+  'init; halt; echo "magic  =[format 0x%08x [read_memory 0xFC08 32 1]]";
+   echo "floor  =[format 0x%08x [read_memory 0xF800 32 1]]";
+   echo "bootcfg=[format 0x%08x [read_memory 0x400FE1D0 32 1]]"; resume; exit'
+```
+
+`magic` reads `0x544f4f42` on a committed image. Anything else is the verdict word XORed in: bit 0 version, bit 1 signature, low byte tag. `0xffffffff` means erased. `floor` is the first ratchet word; `0xffffffff` means never raised, which reads as version 1.
+
+Always `resume` after a `halt`. A halted core does not answer the UART, and the next `fw_update.py` will hang against it.
 
 Copyright 2024 The MITRE Corporation. ALL RIGHTS RESERVED <br>
 Approved for public release. Distribution unlimited 23-02181-25.

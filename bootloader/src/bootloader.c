@@ -289,14 +289,14 @@ void boot_firmware(void) {
 
     // fold magic+bounds twice erased page fails
     // gate print and jump a skipped branch cannot leak flash
-    uint32_t bad = *(volatile uint32_t *)(METADATA_BASE + 8) ^ BOOT_MAGIC;
+    volatile uint32_t bad = *(volatile uint32_t *)(METADATA_BASE + 8) ^ BOOT_MAGIC;
     if (size > MAX_FW_SIZE)    { bad |= 0x10000; }
     if (msg_len > MAX_MSG_LEN) { bad |= 0x20000; }
     bad |= *(volatile uint32_t *)(METADATA_BASE + 8) ^ BOOT_MAGIC; // volatile: keep both reads
 
     if (bad) {
         uart_write_str(UART0, "No firmware loaded. Please RESET device.\n");
-        while (1) { }
+        return; // back to the command loop; reaches neither the print nor the jump
     }
 
     uint8_t *msg = (uint8_t *)(FW_BASE + size);
