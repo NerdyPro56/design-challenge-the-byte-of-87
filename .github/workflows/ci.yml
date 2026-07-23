@@ -37,6 +37,22 @@ jobs:
           echo "bootloader.bin: $size bytes"
           test "$size" -lt 63488
 
+      - name: unused peripheral drivers stay out of the image
+        run: |
+          # bootloader/Makefile force-lists every driverlib object on the link line,
+          # so only --gc-sections (makedefs) keeps uDMA, USB, CAN and friends out of
+          # flash. Lose that flag and they land in the image as gadgets an attacker
+          # who gets execution can reuse -- uDMA in particular is a flash-to-UART
+          # copy engine. Nothing here calls them, so any hit means the strip broke.
+          nm=$(arm-none-eabi-nm --defined-only bootloader/bin/bootloader.axf)
+          bad=$(echo "$nm" | grep -E ' [TtWw] (uDMA|USB|CAN|EMAC|EPI|LCD|QEI|PWM|SHAMD5|Hibernate|OneWire)' || true)
+          if [ -n "$bad" ]; then
+            echo "$bad"
+            echo "ERROR: unused driverlib peripherals linked in; is --gc-sections still set?"
+            exit 1
+          fi
+          echo "no unused peripheral drivers in the image"
+
       - name: host tools produce a valid protected image
         working-directory: tools
         run: |
