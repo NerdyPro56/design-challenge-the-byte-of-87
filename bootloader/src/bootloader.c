@@ -24,6 +24,7 @@
 #include "secrets.h"
 #include "wolfssl/wolfcrypt/chacha20_poly1305.h"
 #include "wolfssl/wolfcrypt/ed25519.h"
+#include "wolfssl/wolfcrypt/sha512.h"
 
 // Forward Declarations
 void load_firmware(void);
@@ -48,8 +49,8 @@ void boot_firmware(void);
 // Device metadata
 uint16_t * fw_size_address = (uint16_t *)(METADATA_BASE + 2); // record+2; boot reads size here
 
-// public keys from bl_build
-static const uint8_t fw_key[] = FW_KEY;  // symmetric, must stay on-chip only
+// keys from bl_build
+static const uint8_t fw_key_obf[] = FW_KEY_OBF; // fw_key ^ sha512(ed_pub)[:32]; no plain key at rest
 static const uint8_t ed_pub[] = ED25519_PUB; // verify half; private seed never leaves factory
 
 // Firmware Buffer
@@ -214,7 +215,15 @@ void load_firmware(void) {
 
     // pass two: only a validly signed image reaches fw_key; decrypt scratch in place into the fw region
     if (diff == 0) {
-        wc_ChaCha20Poly1305_Init(&aead, fw_key, hdr + 6, CHACHA20_POLY1305_AEAD_DECRYPT); // nonce = hdr+6
+        uint8_t fwk[32], h[WC_SHA512_DIGEST_SIZE]; // reconstruct fw_key from the obfuscated form at use
+        wc_Sha512 sh;
+        wc_InitSha512(&sh);
+        wc_Sha512Update(&sh, ed_pub, ED25519_PUB_KEY_SIZE);
+        wc_Sha512Final(&sh, h);
+        for (uint32_t i = 0; i < 32; i++) { fwk[i] = fw_key_obf[i] ^ h[i]; }
+        wc_ChaCha20Poly1305_Init(&aead, fwk, hdr + 6, CHACHA20_POLY1305_AEAD_DECRYPT); // nonce = hdr+6
+        wipe((volatile uint8_t *)fwk, 32); // Init copied the key schedule; raw key out of SRAM
+        wipe((volatile uint8_t *)h, sizeof h);
         wc_ChaCha20Poly1305_UpdateAad(&aead, hdr, 6); // aad relabel breaks tag
         spage = SCRATCH_BASE;
         got = 0;

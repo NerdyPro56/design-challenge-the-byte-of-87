@@ -9,6 +9,7 @@ Bootloader Build Tool
 Generates the factory secrets, provisions the bootloader source with them, and
 builds the bootloader.
 """
+import hashlib
 import os
 import pathlib
 import subprocess
@@ -27,8 +28,11 @@ def make_bootloader() -> bool:
     seed = sk.seed               # private half, factory only
     pub = sk.public_key().export_key(format="raw") # public half, into the image
 
+    mask = hashlib.sha512(pub).digest()[:32] # bootloader re-derives from ed_pub; no key blob or mask sits in flash
+    obf = bytes(key[i] ^ mask[i] for i in range(32))
+
     with open(os.path.join(BOOTLOADER_DIR, "inc", "secrets.h"), "w") as f: # compiled into the bootloader
-        f.write("#define FW_KEY {%s}\n" % ",".join(hex(b) for b in key))
+        f.write("#define FW_KEY_OBF {%s}\n" % ",".join(hex(b) for b in obf))
         f.write("#define ED25519_PUB {%s}\n" % ",".join(hex(b) for b in pub))
     with open(os.path.join(REPO_ROOT, "tools", "secret_build_output.txt"), "wb") as f: # fw_protect side
         f.write(key + seed)      # 32 fw_key + 32 seed; the seed never reaches the chip
