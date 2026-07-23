@@ -17,6 +17,7 @@
 
 // Application Imports
 #include "driverlib/gpio.h"
+#include "driverlib/mpu.h"
 #include "uart/uart.h"
 
 // Crypto Imports
@@ -32,6 +33,7 @@ void boot_firmware(void);
 #define METADATA_BASE 0xFC00 // boot record
 #define MIN_VER_BASE  0xF800 // ratchet page never erased
 #define FW_BASE       0x10000 // firmware base
+#define SRAM_BASE     0x20000000 // 32 kB, execute-never under the MPU
 #define SCRATCH_BASE  0x18000 // ciphertext staging; fw_key runs only after the signature verifies
 #define BOOT_MAGIC    0x544F4F42 // verified install writes it
 #define HDR_LEN       98 // aad6 nonce12 tag16 sig64
@@ -57,6 +59,19 @@ unsigned char data[FLASH_PAGESIZE] __attribute__((aligned(4))); // one-page stag
 static void reject(void) {
     uart_write(UART0, ERROR);
     SysCtlReset();
+}
+
+// volatile so the store survives; no dead-store elimination
+static void wipe(volatile uint8_t *p, uint32_t n) {
+    while (n--) { *p++ = 0; }
+}
+
+// SRAM execute-never; injected data cannot run as code. bench-verify before a locked build
+static void lock_sram_xn(void) {
+    MPURegionSet(0, SRAM_BASE,
+                 MPU_RGN_SIZE_32K | MPU_RGN_PERM_NOEXEC | MPU_RGN_PERM_PRV_RW_USR_RW | MPU_RGN_ENABLE);
+    MPUEnable(MPU_CONFIG_PRIV_DEFAULT);
+    __asm(" dsb\n isb\n");
 }
 
 // kill jtag/swd so a dump reads nothing
@@ -100,6 +115,8 @@ int main(void) {
 #if LOCK
     lock_debug(); // lock before any uart
 #endif
+
+    lock_sram_xn(); // SRAM execute-never before any input is parsed
 
     initialize_uarts(UART0);
 
@@ -234,6 +251,8 @@ void load_firmware(void) {
     } else {
         reject(); // record stays erased, boot bounds fold rejects the 0xffff size
     }
+    wipe((volatile uint8_t *)&aead, sizeof aead); // keyed ChaCha state off the stack
+    wipe((volatile uint8_t *)data, FLASH_PAGESIZE); // last plaintext page
     uart_write(UART0, OK);
 }
 
