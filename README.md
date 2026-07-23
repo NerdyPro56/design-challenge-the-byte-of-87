@@ -1,6 +1,6 @@
 # Cryptographic Automotive Software Handler and Bootloader (CrASHBoot)
 > [!warning]
-> # Warning: This bootloader may brick your Tiva if you mess up instructions
+> # Warning: This bootloader may soft-brick your Tiva if you mess up instructions (recoverable)
 
 ## The Byte of 87 secure redesign
 
