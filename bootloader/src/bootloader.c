@@ -51,7 +51,7 @@ static const uint8_t fw_key[] = FW_KEY;  // symmetric, must stay on-chip only
 static const uint8_t ed_pub[] = ED25519_PUB; // verify half; private seed never leaves factory
 
 // Firmware Buffer
-unsigned char data[FLASH_PAGESIZE]; // one-page staging, decrypt in place
+unsigned char data[FLASH_PAGESIZE] __attribute__((aligned(4))); // one-page staging; word-aligned for FlashProgram
 
 
 static void reject(void) {
@@ -219,7 +219,7 @@ void load_firmware(void) {
         }
     }
 
-    uint32_t magic = BOOT_MAGIC ^ diff; // bad verdict makes a magic boot refuses
+    uint32_t magic = BOOT_MAGIC ^ diff; // diff!=0 makes a magic boot refuses even if the write is forced
 
     // ratchet before record a cut raises floor with nothing installed
     if (diff == 0 && ver > cur_floor() && slot < (uint32_t *)METADATA_BASE) {
@@ -229,10 +229,10 @@ void load_firmware(void) {
 
     memcpy(rec, hdr, 6); // record = ver, size, msg_len
     memcpy(rec + 8, &magic, 4); // pad aligns magic to last word
-    program_flash((uint8_t *)METADATA_BASE, rec, REC_LEN); // magic last torn write stays 0xffffffff
-
-    if (diff != 0) { // host only record already decided
-        reject();
+    if (diff == 0) { // gate on diff; a lone XOR skip no longer commits, two skips now
+        program_flash((uint8_t *)METADATA_BASE, rec, REC_LEN); // magic last torn write stays 0xffffffff
+    } else {
+        reject(); // record stays erased, boot bounds fold rejects the 0xffff size
     }
     uart_write(UART0, OK);
 }

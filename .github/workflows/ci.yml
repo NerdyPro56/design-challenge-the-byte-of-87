@@ -71,3 +71,6 @@ jobs:
 
       - name: fault-injection regression (single-fault rollback must fail)
         run: python tests/emu/fault_rollback.py
+
+      - name: fault-injection regression (single-fault commit must fail)
+        run: python tests/emu/fault_commit.py
