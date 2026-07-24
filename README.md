@@ -1,6 +1,9 @@
 # Cryptographic Automotive Software Handler and Bootloader (CrASHBoot)
+
 > [!warning]
 > # Warning: This bootloader may soft-brick your Tiva if you mess up instructions (recoverable)
+
+<img width="736" height="736" alt="image" src="https://github.com/user-attachments/assets/3ec145d9-b7bc-44f8-8cb2-86ae1ae6bf5b" />
 
 ## The Byte of 87 secure redesign
 
@@ -16,10 +19,12 @@ I find myself trapped in the labyrinthine depths of my company, shackled by an u
 
 Please, send help. I need to escape this relentless cycle. I need a team of talented interns to tackle this challenge. Otherwise, I fear the worst.
 ```
+![e](https://i.pinimg.com/originals/4c/d6/ea/4cd6eaa599851725aa5a195d162fb20d.gif)
 
 Do not worry, poor employee. Your call for help has reached thee! Fear not your bugs, nor dread the deploy, us interns come, to code your buoy!
 
 # Read This First
+<img width="736" height="736" alt="image" src="https://github.com/user-attachments/assets/c9ca1dc7-8b6a-4e08-a10d-13ab942fba40" />
 
 ```
 ECTF_LOCK=0 python bl_build.py    # dev: keeps lm4flash and openocd
@@ -31,6 +36,8 @@ Locked boards still update and boot. Only SWD closes; recovery is TI LM Flash Pr
 `fw_update.py` hanging with no output means a stray byte left the bootloader mid-header. Press RESET.
 
 # Project Structure
+![e](https://i.pinimg.com/originals/da/91/0e/da910eb6a6fefe154615509504477a18.gif)
+
 ```
 ├── bootloader
 │   ├── bin
@@ -68,7 +75,7 @@ Locked boards still update and boot. Only SWD closes; recovery is TI LM Flash Pr
 (obtained via `tree --gitignore -I lib`)
 
 # Prerequisites
-
+![e](https://i.pinimg.com/originals/8f/c2/54/8fc254c88aead8df332af9039d9658d2.gif)
 - `arm-none-eabi-gcc` toolchain
 - `lm4flash` to flash an unlocked board
 - `openocd` to debug or erase an unlocked board
@@ -79,6 +86,7 @@ Locked boards still update and boot. Only SWD closes; recovery is TI LM Flash Pr
 `bootloader/Makefile` builds wolfSSL. `bootloader/inc/user_settings.h` selects its primitives.
 
 # Host Tool API
+![e](https://i.pinimg.com/originals/21/3c/5a/213c5a93142eb37cd2a986b7d4cb123a.gif)
 
 Three tools, three command lines, fixed by the rules. Run each from `tools/`. Exit zero means success.
 
@@ -91,6 +99,9 @@ python fw_update.py  --port <serial port> --firmware <out.bin>
 Limits: firmware 30720 B, message 1024 B, version 0 to 65535. `ECTF_LOCK` is an environment variable, not a flag, so the mandated command line stays the mandated command line.
 
 # The Factory Sequence
+
+![e](https://images.steamusercontent.com/ugc/261594144871269127/2876A5D936B8790021A14AADC28F035E92418015/?imw=5000&imh=5000&ima=fit&impolicy=Letterbox&imcolor=%23000000&letterbox=false)
+
 
 ```
 cd tools
@@ -108,12 +119,16 @@ python fw_update.py --port /dev/tty.usbmodemXXXX --firmware init_fw_prot.bin
 
 # Build and Flash
 
+<img width="250" height="379" alt="image" src="https://github.com/user-attachments/assets/dceb7010-5797-47df-bfcc-b75d19dcb96f" />
+<img width="270" height="506.5" alt="image" src="https://github.com/user-attachments/assets/eb773898-d51d-470b-85ed-b42187c32daa" />
+
 ```
 ECTF_LOCK=0 python bl_build.py && lm4flash ../bootloader/bin/bootloader.bin   # reflashable
 python bl_build.py             && lm4flash ../bootloader/bin/bootloader.bin   # one-way
 ```
 
 # Protect and Update Firmware
+
 
 ```
 cd ../firmware && make
@@ -139,6 +154,9 @@ A bad signature is refused after the erase, so the device reports no firmware un
 
 # Interacting with the Bootloader
 
+<img width="500" height="500" alt="image" src="https://github.com/user-attachments/assets/ec02c261-c105-45d3-b6e3-8605dd0935f8" />
+
+
 ```
 python -m serial.tools.miniterm /dev/tty.usbmodemXXXX 115200
 ```
@@ -146,6 +164,9 @@ python -m serial.tools.miniterm /dev/tty.usbmodemXXXX 115200
 `U` updates, `B` boots. `Ctrl-]` quits miniterm. Close it before `fw_update.py`.
 
 # When It Looks Bricked
+
+<img width="550" height="550" alt="image" src="https://github.com/user-attachments/assets/a06b4139-85ac-4f3d-8a63-b75419f6c54d" />
+
 
 | Symptom | Cause | Cure |
 | --- | --- | --- |
@@ -159,6 +180,9 @@ python -m serial.tools.miniterm /dev/tty.usbmodemXXXX 115200
 `reject()` resets before the `ERROR` byte leaves the FIFO, so you see the banner instead. Any non-`OK` reply exits 1.
 
 # Debug Lock and Recovery
+
+<img width="302" height="222" alt="image" src="https://github.com/user-attachments/assets/d884ec45-acb5-4217-82fe-f972afb14c26" />
+
 
 The production build clears `BOOTCFG.DBG1` on the first boot. An unplug and replug latches it. RESET does not.
 
