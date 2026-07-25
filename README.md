@@ -1,5 +1,5 @@
 # Cryptographic Automotive Software Handler and Bootloader (CrASHBoot)
-## "Informative diagrams" and warning by Taurox
+## "Informative diagrams" and Warning by Taurox
 > [!warning]
 > # Warning: This bootloader may soft-brick your Tiva if you mess up instructions (recoverable)
 
