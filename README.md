@@ -143,14 +143,14 @@ Wrote frame 11 (64 bytes)
 Done writing firmware.        # exit 0. a rejection raises and exits 1
 ```
 
-~8-12 s; the crypto takes a while. Rerun freely. If it acts up, RESET.
+~8-12 s; the crypto takes a while. RESET during an update keeps the last committed firmware bootable.
 
 ```
 --version 0    # installs at any floor, never raises it
 --version 1    # below min_ver: refused at the header, before anything is erased
 ```
 
-A bad signature is refused after the erase, so the device reports no firmware until a good image lands.
+A bad signature is refused without replacing the last committed firmware.
 
 # Interacting with the Bootloader
 
@@ -171,13 +171,13 @@ python -m serial.tools.miniterm /dev/tty.usbmodemXXXX 115200
 | Symptom | Cause | Cure |
 | --- | --- | --- |
 | `no handshake from the bootloader after 10s` | stranded mid-header | press RESET, rerun |
-| `Bootloader responded with b'W'` | image refused; `W` opens the reset banner, it is not a reply | check the version, and that the keys match the flashed build |
-| `No firmware loaded. Please RESET device.` | no committed boot record | rerun `fw_update.py` with a valid image |
+| `Bootloader responded with b'\x01'` | image refused | check the version, and that the keys match the flashed build |
+| `No firmware loaded. Please RESET device.` | no firmware has committed | run `fw_update.py` with a valid image |
 | `B` does nothing | firmware already running | press RESET |
 | `lm4flash` hangs forever | debug port latched | TI unlock, below |
 | `openocd`: `query supported failed: 0x7` | debug port latched | TI unlock, below |
 
-`reject()` resets before the `ERROR` byte leaves the FIFO, so you see the banner instead. Any non-`OK` reply exits 1.
+`reject()` drains the transmitter before it resets, so the `ERROR` byte arrives ahead of the banner. Any non-`OK` reply exits 1.
 
 # Debug Lock and Recovery
 

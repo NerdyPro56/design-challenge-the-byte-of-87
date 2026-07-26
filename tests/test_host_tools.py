@@ -100,6 +100,15 @@ class HostTools(unittest.TestCase):
         ver, size, mlen = struct.unpack("<HHH", blob[:AAD])
         self.assertEqual(ver, 0xFFFF)
 
+    def test_size_limits(self):
+        with open("fw.bin", "wb") as f:
+            f.write(b"x" * 30721)
+        self.assertRaises(ValueError, self.protect, 2, "x")
+        with open("fw.bin", "wb") as f:
+            f.write(b"x")
+        self.assertRaises(ValueError, self.protect, 2, "x" * 1025)
+        self.assertRaises(ValueError, self.protect, 0x10000, "x")
+
 
 if __name__ == "__main__":
     unittest.main()

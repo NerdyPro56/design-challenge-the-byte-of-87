@@ -14,6 +14,7 @@
 #include "driverlib/flash.h"     // FLASH API
 #include "driverlib/interrupt.h" // Interrupt API
 #include "driverlib/sysctl.h"    // System control API (clock/reset)
+#include "driverlib/uart.h"      // UARTBusy, to drain before a reset
 
 // Application Imports
 #include "driverlib/gpio.h"
@@ -36,6 +37,8 @@ void boot_firmware(void);
 #define FW_BASE       0x10000 // firmware base
 #define SRAM_BASE     0x20000000 // 32 kB, execute-never under the MPU
 #define SCRATCH_BASE  0x18000 // ciphertext staging; fw_key runs only after the signature verifies
+#define BACKUP_FW_BASE 0x20000
+#define BACKUP_METADATA_BASE 0x28000
 #define BOOT_MAGIC    0x544F4F42 // verified install writes it
 #define HDR_LEN       98 // aad6 nonce12 tag16 sig64
 #define SIG_OFF       34 // sig offset
@@ -45,6 +48,15 @@ void boot_firmware(void);
 // FLASH Constants
 #define FLASH_PAGESIZE 1024
 #define FLASH_WRITESIZE 4
+#define CHIP_FLASH_SIZE 0x40000
+#define MAX_IMAGE_SIZE (MAX_FW_SIZE + MAX_MSG_LEN)
+
+#if FW_BASE + MAX_IMAGE_SIZE > SCRATCH_BASE || \
+    SCRATCH_BASE + MAX_IMAGE_SIZE > BACKUP_FW_BASE || \
+    BACKUP_FW_BASE + MAX_IMAGE_SIZE > BACKUP_METADATA_BASE || \
+    BACKUP_METADATA_BASE + FLASH_PAGESIZE > CHIP_FLASH_SIZE
+#error Firmware flash regions overlap
+#endif
 
 // Device metadata
 uint16_t * fw_size_address = (uint16_t *)(METADATA_BASE + 2); // record+2; boot reads size here
@@ -59,6 +71,7 @@ unsigned char data[FLASH_PAGESIZE] __attribute__((aligned(4))); // one-page stag
 
 static void reject(void) {
     uart_write(UART0, ERROR);
+    while (UARTBusy(UART0_BASE)) { } // the reset would drop the byte out of the tx fifo
     SysCtlReset();
 }
 
@@ -110,6 +123,62 @@ __attribute__((noinline)) static uint16_t cur_floor(void) {
     return v;
 }
 
+static bool record_ok(uint32_t base) {
+    uint16_t size = *(uint16_t *)(base + 2);
+    uint16_t msg_len = *(uint16_t *)(base + 4);
+    return *(uint32_t *)(base + 8) == BOOT_MAGIC &&
+           size > 0 && size <= MAX_FW_SIZE &&
+           msg_len > 0 && msg_len <= MAX_MSG_LEN;
+}
+
+static long copy_pages(uint32_t dst, uint32_t src, uint32_t n) {
+    while (n) {
+        uint32_t len = n > FLASH_PAGESIZE ? FLASH_PAGESIZE : n;
+        memcpy(data, (const void *)src, len);
+        if (program_flash((void *)dst, data, len)) {
+            return 1;
+        }
+        dst += FLASH_PAGESIZE;
+        src += FLASH_PAGESIZE;
+        n -= len;
+    }
+    return 0;
+}
+
+static void recover_firmware(void) {
+    if (record_ok(METADATA_BASE)) {
+        if (record_ok(BACKUP_METADATA_BASE)) {
+            FlashErase(BACKUP_METADATA_BASE);
+        }
+        return;
+    }
+    if (!record_ok(BACKUP_METADATA_BASE)) {
+        return;
+    }
+
+    uint32_t n = *(uint16_t *)(BACKUP_METADATA_BASE + 2);
+    n += *(uint16_t *)(BACKUP_METADATA_BASE + 4);
+    if (!copy_pages(FW_BASE, BACKUP_FW_BASE, n) &&
+        !program_flash((void *)METADATA_BASE,
+                       (uint8_t *)BACKUP_METADATA_BASE, REC_LEN)) {
+        FlashErase(BACKUP_METADATA_BASE);
+    }
+}
+
+static void sync_floor(void) {
+    if (!record_ok(METADATA_BASE)) {
+        return;
+    }
+    uint16_t ver = *(uint16_t *)METADATA_BASE;
+    if (ver != 0 && ver > cur_floor()) {
+        uint32_t *slot = min_ver_slot();
+        if (slot < (uint32_t *)METADATA_BASE) {
+            uint32_t w = ver;
+            FlashProgram(&w, (uint32_t)slot, 4);
+        }
+    }
+}
+
 
 int main(void) {
 
@@ -118,6 +187,9 @@ int main(void) {
 #endif
 
     lock_sram_xn(); // SRAM execute-never before any input is parsed
+
+    recover_firmware();
+    sync_floor();
 
     initialize_uarts(UART0);
 
@@ -150,7 +222,7 @@ void load_firmware(void) {
     uint8_t hdr[HDR_LEN], tag[16], rec[REC_LEN] __attribute__((aligned(4))); // word aligned
     ChaChaPoly_Aead aead;
     ed25519_key ekey;
-    uint32_t page = FW_BASE, spage = SCRATCH_BASE, idx = 0, got = 0, diff = 0; // fw ptr, scratch ptr, buf idx, bytes got, verdict
+    uint32_t spage = SCRATCH_BASE, idx = 0, got = 0, diff = 0, backed = 0;
 
     for (uint32_t i = 0; i < HDR_LEN; i++) { // header is a fixed 98 bytes
         hdr[i] = uart_read(UART0, BLOCKING, &read);
@@ -160,8 +232,6 @@ void load_firmware(void) {
     uint16_t size = hdr[2] | (hdr[3] << 8);
     uint16_t msg_len = hdr[4] | (hdr[5] << 8);
     uint32_t total = size + msg_len; // bytes to stream: firmware then message
-
-    uint32_t *slot = min_ver_slot(); // free slot for the ratchet bump
 
     // unauth here bounds; signature then tag are the gate
     if (size == 0 || size > MAX_FW_SIZE || msg_len == 0 || msg_len > MAX_MSG_LEN) {
@@ -177,7 +247,6 @@ void load_firmware(void) {
     wc_ed25519_verify_msg_init(hdr + SIG_OFF, ED25519_SIG_SIZE, &ekey, (byte)Ed25519, NULL, 0);
     wc_ed25519_verify_msg_update(hdr, SIG_OFF, &ekey); // signed prefix: aad+nonce+tag
 
-    FlashErase(METADATA_BASE); // no bootable image until commit
     uart_write(UART0, OK);
 
     while (got < total) {
@@ -213,7 +282,7 @@ void load_firmware(void) {
     if (ver != 0 && ver < cur_floor()) { diff |= 1; }
     if (sigok != 1)                    { diff |= 2; }
 
-    // pass two: only a validly signed image reaches fw_key; decrypt scratch in place into the fw region
+    // pass two: only a validly signed image reaches fw_key
     if (diff == 0) {
         uint8_t fwk[32], h[WC_SHA512_DIGEST_SIZE]; // reconstruct fw_key from the obfuscated form at use
         wc_Sha512 sh;
@@ -232,10 +301,9 @@ void load_firmware(void) {
             if (n > FLASH_PAGESIZE) { n = FLASH_PAGESIZE; }
             memcpy(data, (const void *)spage, n); // read the staged ciphertext
             wc_ChaCha20Poly1305_UpdateData(&aead, data, data, n); // decrypt in place
-            if (program_flash((uint8_t *)page, data, n)) {
+            if (program_flash((uint8_t *)spage, data, n)) {
                 reject();
             }
-            page += FLASH_PAGESIZE;
             spage += FLASH_PAGESIZE;
             got += n;
         }
@@ -247,18 +315,43 @@ void load_firmware(void) {
 
     uint32_t magic = BOOT_MAGIC ^ diff; // diff!=0 makes a magic boot refuses even if the write is forced
 
-    // ratchet before record a cut raises floor with nothing installed
-    if (diff == 0 && ver > cur_floor() && slot < (uint32_t *)METADATA_BASE) {
-        uint32_t w = ver;
-        FlashProgram(&w, (uint32_t)slot, 4); // not program_flash it erases
+    if (diff == 0 && record_ok(METADATA_BASE)) {
+        uint32_t old_total = *fw_size_address;
+        old_total += *(uint16_t *)(METADATA_BASE + 4);
+        if (FlashErase(BACKUP_METADATA_BASE)) {
+            reject();
+        }
+        if (copy_pages(BACKUP_FW_BASE, FW_BASE, old_total) ||
+            program_flash((void *)BACKUP_METADATA_BASE,
+                          (uint8_t *)METADATA_BASE, REC_LEN)) {
+            reject();
+        }
+        backed = 1;
+    }
+    if (diff == 0) {
+        if (FlashErase(METADATA_BASE)) {
+            reject();
+        }
+        if (copy_pages(FW_BASE, SCRATCH_BASE, total)) {
+            reject();
+        }
     }
 
     memcpy(rec, hdr, 6); // record = ver, size, msg_len
     memcpy(rec + 8, &magic, 4); // pad aligns magic to last word
     if (diff == 0) { // gate on diff; a lone XOR skip no longer commits, two skips now
-        program_flash((uint8_t *)METADATA_BASE, rec, REC_LEN); // magic last torn write stays 0xffffffff
+        if (program_flash((uint8_t *)METADATA_BASE, rec, REC_LEN)) {
+            reject();
+        }
+        sync_floor();
+        FlashErase(BACKUP_METADATA_BASE);
+        if (backed) { // record committed, so drop the old plaintext a dump would find
+            for (uint32_t a = BACKUP_FW_BASE; a < BACKUP_METADATA_BASE; a += FLASH_PAGESIZE) {
+                FlashErase(a);
+            }
+        }
     } else {
-        reject(); // record stays erased, boot bounds fold rejects the 0xffff size
+        reject();
     }
     wipe((volatile uint8_t *)&aead, sizeof aead); // keyed ChaCha state off the stack
     wipe((volatile uint8_t *)data, FLASH_PAGESIZE); // last plaintext page
@@ -278,8 +371,10 @@ long program_flash(void* page_addr, unsigned char * data, unsigned int data_len)
     int ret;
     int i;
 
-    // Erase next FLASH page
-    FlashErase((uint32_t) page_addr);
+    ret = FlashErase((uint32_t) page_addr);
+    if (ret != 0) {
+        return ret;
+    }
 
     // Clear potentially unused bytes in last word
     // If data not a multiple of 4 (word size), program up to the last word

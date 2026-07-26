@@ -39,8 +39,8 @@
 
 MEMORY
 {
-    FLASH (rx) : ORIGIN = 0x00000000, LENGTH = 0x00080000
-    SRAM (rwx) : ORIGIN = 0x20000000, LENGTH = 0x00018000
+    FLASH (rx) : ORIGIN = 0x00000000, LENGTH = 0x00040000
+    SRAM (rwx) : ORIGIN = 0x20000000, LENGTH = 0x00008000
 }
 
 SECTIONS
@@ -70,4 +70,7 @@ SECTIONS
         *(COMMON)
         _ebss = .;
     } > SRAM
+
+    ASSERT((LOADADDR(.data) + SIZEOF(.data)) <= 0x17800,
+           "firmware exceeds 30 kB update limit")
 }

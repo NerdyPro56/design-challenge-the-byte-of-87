@@ -36,6 +36,9 @@ class Bench:
         self.fmd = 0
         self.steps = 0
         self.did_reset = False
+        self.min_sp = 0xffffffff
+        self.flash_error = None
+        self.ops = []
 
     def uart_read_hook(self, offset):
         if offset == UART_FR:
@@ -53,7 +56,8 @@ class Bench:
         if offset == UART_DR:
             self.uart_out.append(value & 0xFF)
 
-def run(uart_in=b"", max_count=600_000_000, preload_flash=None, code_hooks=None):
+def run(uart_in=b"", max_count=600_000_000, preload_flash=None, code_hooks=None,
+        stop_on_flash=None):
     global flash
     flash = bytearray(b"\xff" * FLASH_SIZE)
     with open(BIN, "rb") as f:
@@ -95,6 +99,21 @@ def run(uart_in=b"", max_count=600_000_000, preload_flash=None, code_hooks=None)
     bench.wbuf = [0] * 32
     bench.fwbval = 0
 
+    def flash_ok(address, size, operation):
+        if address < FLASH_BASE or address + size > FLASH_BASE + FLASH_SIZE:
+            bench.flash_error = (operation, address, size)
+            uc.emu_stop()
+            return False
+        return True
+
+    # stop_on_flash: ("erase", page) or an int = cut after that many flash operations
+    def note_op(kind, addr):
+        bench.ops.append((kind, addr))
+        if stop_on_flash == (kind, addr):
+            uc.emu_stop()
+        elif isinstance(stop_on_flash, int) and len(bench.ops) >= stop_on_flash:
+            uc.emu_stop()
+
     def hook_mem_write(uc, access, address, size, value, user):
         if UART0 <= address < UART0 + 0x1000:
             bench.uart_write_hook(address - UART0, value)
@@ -115,21 +134,44 @@ def run(uart_in=b"", max_count=600_000_000, preload_flash=None, code_hooks=None)
             if (value & 0xFFFF0000) == FMC_WRKEY:
                 if value & FMC_ERASE:
                     page = bench.fma & ~0x3FF
+                    if not flash_ok(page, 1024, "erase"):
+                        return True
                     flash[page:page + 1024] = b"\xff" * 1024
                     uc.mem_write(FLASH_BASE + page, bytes(flash[page:page + 1024]))
+                    note_op("erase", page)
                 elif value & FMC_WRITE:
                     a = bench.fma
-                    flash[a:a+4] = struct.pack("<I", bench.fmd)
+                    if not flash_ok(a, 4, "write"):
+                        return True
+                    old = struct.unpack("<I", flash[a:a+4])[0]
+                    if bench.fmd & ~old:
+                        bench.flash_error = ("0 to 1", a, 4)
+                        uc.emu_stop()
+                        return True
+                    flash[a:a+4] = struct.pack("<I", old & bench.fmd)
                     uc.mem_write(FLASH_BASE + a, bytes(flash[a:a+4]))
+                    note_op("write", a)
         elif address == FMC2:
             if (value & 0xFFFF0000) == FMC_WRKEY and (value & FMC2_WRBUF):
                 base = bench.fma & ~0x7F
+                if not flash_ok(base, 128, "write buffer"):
+                    return True
                 for i in range(32):
                     if bench.fwbval & (1 << i):
                         a = base + i * 4
-                        flash[a:a+4] = struct.pack("<I", bench.wbuf[i])
+                        old = struct.unpack("<I", flash[a:a+4])[0]
+                        if bench.wbuf[i] & ~old:
+                            bench.flash_error = ("0 to 1", a, 4)
+                            uc.emu_stop()
+                            return True
+                for i in range(32):
+                    if bench.fwbval & (1 << i):
+                        a = base + i * 4
+                        old = struct.unpack("<I", flash[a:a+4])[0]
+                        flash[a:a+4] = struct.pack("<I", old & bench.wbuf[i])
                 uc.mem_write(FLASH_BASE + base, bytes(flash[base:base+128]))
                 bench.fwbval = 0
+                note_op("wrbuf", base)
         return True
 
     def hook_unmapped(uc, access, address, size, value, user):
@@ -148,6 +190,12 @@ def run(uart_in=b"", max_count=600_000_000, preload_flash=None, code_hooks=None)
     uc.hook_add(UC_HOOK_MEM_READ, hook_flashctl_read, begin=FLASHCTL_BASE, end=FLASHCTL_BASE+FLASHCTL_SIZE)
     uc.hook_add(UC_HOOK_MEM_WRITE, hook_mem_write, begin=FLASHCTL_BASE, end=FLASHCTL_BASE+FLASHCTL_SIZE)
     uc.hook_add(UC_HOOK_MEM_UNMAPPED, hook_unmapped)
+
+    def hook_sram_write(uc, access, address, size, value, user):
+        bench.min_sp = min(bench.min_sp, uc.reg_read(UC_ARM_REG_SP))
+        return True
+    uc.hook_add(UC_HOOK_MEM_WRITE, hook_sram_write,
+                begin=SRAM_BASE, end=SRAM_BASE + SRAM_SIZE - 1)
 
     # SysCtlReset writes NVIC_APINT then spins; stop there
     def hook_reset(uc, access, address, size, value, user):
@@ -177,6 +225,7 @@ def run(uart_in=b"", max_count=600_000_000, preload_flash=None, code_hooks=None)
     sp = struct.unpack("<I", bytes(uc.mem_read(0x0, 4)))[0]
     reset = struct.unpack("<I", bytes(uc.mem_read(0x4, 4)))[0]
     uc.reg_write(UC_ARM_REG_SP, sp)
+    bench.min_sp = sp
 
     err = None
     try:
@@ -186,9 +235,11 @@ def run(uart_in=b"", max_count=600_000_000, preload_flash=None, code_hooks=None)
     return {
         "uart_out": bytes(bench.uart_out),
         "flash": bytes(flash),
+        "flash_error": bench.flash_error,
+        "ops": bench.ops,
         "err": err,
         "unmapped": [(a, hex(x)) for a, x in unmapped[:8]],
-        "sp": sp, "reset": reset,
+        "sp": sp, "min_sp": bench.min_sp, "reset": reset,
     }
 
 def main():

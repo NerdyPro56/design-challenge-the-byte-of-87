@@ -18,13 +18,19 @@ from Crypto.Signature import eddsa
 def protect_firmware(infile, outfile, version, message):
     with open(infile, "rb") as fp:
         firmware = fp.read()
+    msg = message.encode() + b"\x00"
+    if len(firmware) == 0 or len(firmware) > 30720:
+        raise ValueError("firmware must be 1 to 30720 bytes")
+    if len(msg) > 1025:
+        raise ValueError("message must be at most 1024 encoded bytes")
+    if version < 0 or version > 0xFFFF:
+        raise ValueError("version must be 0 to 65535")
 
     with open("secret_build_output.txt", "rb") as f:
         blob = f.read()          # factory secrets from bl_build
     key = blob[:32]              # fw_key
     sk = ECC.construct(curve="Ed25519", seed=blob[32:64]) # signing seed, factory only
 
-    msg = message.encode() + b"\x00" # null keeps empty message legal: msg_len 1 not 0
     aad = struct.pack("<HHH", version, len(firmware), len(msg)) # signed + tag-covered metadata
 
     nonce = get_random_bytes(12) # per image; reuse under one key breaks confidentiality and the tag

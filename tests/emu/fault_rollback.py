@@ -65,9 +65,14 @@ def committed(sites):
     return magic == BOOT_MAGIC
 
 results = []
-for label, sites, want in (("none", [], False), ("single", SITES[:1], False), ("all", SITES, True)):
+cases = [("none", [], False)]
+for a in SITES: # every site on its own; SITES[0] alone is in sync_floor and proves nothing
+    cases.append(("single %#06x" % a, [a], False))
+cases.append(("all", SITES, True))
+
+for label, sites, want in cases:
     got = committed(sites)
-    print(f"{label:>6} floor fault: v1 committed = {got}  (want {want})")
+    print(f"{label:>14} floor fault: v1 committed = {got}  (want {want})")
     results.append(got is want)
 
 print("PASS" if all(results) else "FAIL", f"({sum(results)}/{len(results)})")

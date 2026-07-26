@@ -32,7 +32,7 @@ from util import *
 
 RESP_OK = b"\x00"
 FRAME_SIZE = 256
-RESP_TIMEOUT = 30 # commit ack waits on ed25519 + two-pass decrypt: 12 s at full size
+RESP_TIMEOUT = 30 # commit ack waits on ed25519, decrypt, backup, and install: ~14 s at full size
 HANDSHAKE_TIMEOUT = 10
 
 
@@ -42,6 +42,9 @@ def send_metadata(ser, metadata, debug=False):
     print(f"Version: {version}\nSize: {size} bytes\nMessage: {msg_len} bytes\n")
 
     ser.reset_input_buffer() # a reject resets the device, and its banner carries three 'U's
+    ser.timeout = 0.2
+    while ser.read(4096): # banner bytes still in flight would be read as the echo
+        pass
 
     # Handshake for update
     ser.write(b"U")
