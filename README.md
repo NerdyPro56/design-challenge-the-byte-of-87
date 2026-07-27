@@ -7,6 +7,8 @@
 
 ## The Byte of 87 secure redesign
 
+<img width="1188" height="301" alt="image" src="https://github.com/user-attachments/assets/12433aa3-654a-40fb-86f4-5dc58206de2e" />
+
 This repository hardens CrASHBoot for the 2026 BWSI eCTF. The update path uses ChaCha20-Poly1305 with an Ed25519 signature over the header and ciphertext, a monotone `min_ver` ratchet blocks rollback, and the boot record commits through a derived magic rather than a branch. The debug port locks at first boot so a flash dump returns nothing.
 
 Below is the installation and development guide for the most secure (TM) automotive bootloader on the planet! We guarentee that cars running our software will be unhackable (provided hacking is not attempted). Of all the automotive bootloaders, this is certainly one of the ones of all time. Read on.. and shiver your timbers at our mad embedded security skillz.
@@ -128,6 +130,9 @@ python bl_build.py             && lm4flash ../bootloader/bin/bootloader.bin   # 
 ```
 
 # Protect and Update Firmware
+
+
+<img width="378" height="379" alt="image" src="https://github.com/user-attachments/assets/30115e29-d746-4239-be26-62979ab64e26" />
 
 
 ```
