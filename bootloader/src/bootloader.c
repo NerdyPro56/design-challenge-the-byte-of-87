@@ -192,20 +192,20 @@ int main(void) {
     sync_floor();
 
     initialize_uarts(UART0);
-
+    //prompt user with boot or update
     uart_write_str(UART0, "Welcome to the BWSI Vehicle Update Service!\n");
     uart_write_str(UART0, "Send \"U\" to update, and \"B\" to run the firmware.\n");
 
     int resp;
-    while (1) {
+    while (1) { // waits for user response
         uint32_t instruction = uart_read(UART0, BLOCKING, &resp);
 
-        if (instruction == UPDATE) {
+        if (instruction == UPDATE) { //begins update process
             uart_write_str(UART0, "U");
             load_firmware();
             uart_write_str(UART0, "Loaded new firmware.\n");
             nl(UART0);
-        } else if (instruction == BOOT) {
+        } else if (instruction == BOOT) { //begins boot process
             uart_write_str(UART0, "B");
             uart_write_str(UART0, "Booting firmware...\n");
             boot_firmware();
