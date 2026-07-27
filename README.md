@@ -65,6 +65,7 @@ Locked boards still update and boot. Only SWD closes; recovery is TI LM Flash Pr
 │   ├── emu
 │   │   ├── drive_update.py
 │   │   ├── emu.py
+│   │   ├── fault_commit.py
 │   │   └── fault_rollback.py
 │   ├── test_emu_budget.py
 │   └── test_host_tools.py
@@ -77,6 +78,160 @@ Locked boards still update and boot. Only SWD closes; recovery is TI LM Flash Pr
 ```
 
 (obtained via `tree --gitignore -I lib`)
+
+# Design
+
+This section uses ASD-STE100 Simplified Technical English.
+
+All device code is in `bootloader/src/bootloader.c`. The file `bootloader/inc/user_settings.h` selects the wolfSSL primitives for the build. The three host tools in `tools/` make the keys, make the protected image, and send the image to the device. The line numbers below refer to the current source.
+
+## Protected Image Format
+
+The tool `fw_protect.py` writes a header of 98 bytes. The ciphertext follows the header (`fw_protect.py:44`). The constants `HDR_LEN` and `SIG_OFF` at `bootloader.c:43-44` give the same layout on the device.
+
+| Offset | Size | Field | Produced by | Consumed by |
+| --- | --- | --- | --- | --- |
+| 0 | 6 | version, firmware size, message length, little-endian | `fw_protect.py:34` | `bootloader.c:231-233` |
+| 6 | 12 | ChaCha20 nonce | `fw_protect.py:36` | `bootloader.c:293` |
+| 18 | 16 | Poly1305 tag | `fw_protect.py:39` | `bootloader.c:312` |
+| 34 | 64 | Ed25519 signature | `fw_protect.py:41` | `bootloader.c:247` |
+| 98 | size + msg_len | ciphertext of the firmware, then the release message | `fw_protect.py:39` | streamed at `bootloader.c:259-262` |
+
+The first 6 bytes are the associated data for the AEAD (`fw_protect.py:38`). The bootloader gives the same 6 bytes to the AEAD at `bootloader.c:296`. If an attacker changes the version in the header from 1 to 3, the tag does not agree.
+
+The signature at `fw_protect.py:41` covers the associated data, the nonce, the tag, and the ciphertext. The signature does not cover itself. An attacker who has `fw_key` can calculate a correct tag for any ciphertext. That attacker cannot sign the ciphertext again, because the private key stays in the factory.
+
+The tool adds a null byte to the release message (`fw_protect.py:21`). Therefore `MAX_MSG_LEN` is 1025 and not 1024 (`bootloader.h:11`). A message of 1024 bytes gives a `msg_len` of 1025. An empty message gives a `msg_len` of 1. The bootloader rejects a `msg_len` of 0 at `bootloader.c:237`.
+
+## Memory Map
+
+| Address range | Contents | Constant |
+| --- | --- | --- |
+| `0x00000` to `0x0F7FF` | bootloader code, `fw_key_obf`, `ed_pub` | `FLASH` LENGTH, `bootloader.ld:27` |
+| `0x0F800` to `0x0FBFF` | version floor ratchet | `MIN_VER_BASE`, `bootloader.c:36` |
+| `0x0FC00` to `0x0FFFF` | boot record | `METADATA_BASE`, `bootloader.c:35` |
+| `0x10000` to `0x177FF` | installed firmware, then the release message | `FW_BASE`, `bootloader.c:37` |
+| `0x18000` to `0x1FFFF` | staging area for an incoming update | `SCRATCH_BASE`, `bootloader.c:39` |
+| `0x20000` to `0x27FFF` | backup of the firmware that an update replaces | `BACKUP_FW_BASE`, `bootloader.c:40` |
+| `0x28000` to `0x283FF` | backup boot record | `BACKUP_METADATA_BASE`, `bootloader.c:41` |
+
+The linker script stops the image at `0x0F800`. A bootloader that becomes too large gives a link error. It does not write into the ratchet page. The `#error` block at `bootloader.c:54-59` does the same calculation for the four firmware regions at build time. It uses `MAX_IMAGE_SIZE` as the largest case. If you move one base constant and do not move the next one, the build fails.
+
+The release message starts at `FW_BASE` plus the firmware size. Its start address changes with the size of the image. The limits of 30720 bytes and 1025 bytes keep the two items in the firmware region.
+
+The boot record has 12 bytes. The field sequence puts `size` at the address that `fw_size_address` (`bootloader.c:62`) uses:
+
+| Offset | Size | Field |
+| --- | --- | --- |
+| `0xFC00` | 2 | version |
+| `0xFC02` | 2 | firmware size |
+| `0xFC04` | 2 | message length |
+| `0xFC06` | 2 | padding |
+| `0xFC08` | 4 | magic |
+
+Flash memory programs words in an increasing address sequence. The magic is in the last word. Therefore the bootloader writes the magic last. If power stops during the write, the magic stays `0xFFFFFFFF`. No code reads the padding. The padding puts the magic on a word boundary.
+
+The function `record_ok` (`bootloader.c:126`) is the only test of a record. It examines the magic, the firmware size, and the message length together. The functions `recover_firmware` and `sync_floor` call `record_ok`. They do not repeat the test.
+
+## Keys
+
+The tool `bl_build.py` makes two secrets for each build. `fw_key` is 32 random bytes (`bl_build.py:26`). The Ed25519 key pair comes from `ECC.generate` (`bl_build.py:27`). The build writes the public key and `fw_key_obf` to `bootloader/inc/secrets.h`. `fw_key_obf` is `fw_key` XOR the first 32 bytes of `SHA512(ed_pub)` (`bl_build.py:31-32`).
+
+The private seed goes only to `tools/secret_build_output.txt` (`bl_build.py:37-38`). The tool `fw_protect.py` reads that file (`fw_protect.py:29-32`). The chip never holds the private seed.
+
+The two arrays are at `bootloader.c:65-66`. The bootloader calculates `fw_key` in a stack buffer immediately before it uses the key (`bootloader.c:287-292`). The function `wc_ChaCha20Poly1305_Init` copies the key schedule. The bootloader then erases the buffer with a `volatile` helper (`bootloader.c:294-295`). Therefore the key stays in SRAM for one function call and not for the full update.
+
+The XOR operation is an obstacle and not a boundary. A person who has the source code can calculate `fw_key` from `ed_pub`. The debug lock gives the confidentiality.
+
+## Boot Path
+
+The function `main` (`bootloader.c:183`) does four steps before it accepts a command:
+
+1. `lock_debug`, if `LOCK` is 1
+2. `lock_sram_xn`
+3. `recover_firmware`
+4. `sync_floor`
+
+The function `lock_debug` (`bootloader.c:94`) sets `DBG1` in `BOOTCFG` to 0. If the bit is already 0, the function returns immediately. The function `lock_sram_xn` (`bootloader.c:84`) makes the 32 kB of SRAM no-execute with MPU region 0. Therefore the processor cannot execute data in a buffer.
+
+The function `boot_firmware` (`bootloader.c:409`) does no cryptography. The magic shows that the image passed the tag test, the version test, and the signature test at installation. The test `test_boot_is_crypto_free` (`tests/test_emu_budget.py:76`) limits the boot path to 500000 instructions. A new cryptographic operation in this path makes the test fail.
+
+## Two-Pass Update
+
+The function `load_firmware` (`bootloader.c:220`) does the checks in two passes. The two passes keep `fw_key` away from data that an attacker selects.
+
+In pass one the bootloader reads the header of 98 bytes (`bootloader.c:227-229`). It examines the two lengths and compares the version with the floor (`bootloader.c:237-242`). It then starts an Ed25519 verification on the header (`bootloader.c:245-248`). Each frame goes into the one-page buffer `data[]`. The bootloader gives each frame to `wc_ed25519_verify_msg_update` (`bootloader.c:262`) and programs the frame into the staging area as ciphertext (`bootloader.c:267`). In this pass the bootloader does not change the installed firmware or its record. The function `wc_ed25519_verify_msg_final` (`bootloader.c:276`) gives the result.
+
+Pass two starts only if `diff` is 0 (`bootloader.c:286`). The bootloader calculates `fw_key` again. It decrypts the staging area one page at a time (`bootloader.c:299-309`). It then compares the 16 tag bytes (`bootloader.c:311-313`).
+
+A bootloader that decrypts before it verifies the signature gives an attacker a good target for power analysis. The key is constant. The attacker selects the nonce at `hdr+6` and the ciphertext. The bootloader always accepts a version 0 header. Therefore the attacker can do the operation many times. A bootloader that verifies the signature first uses `fw_key` only on data from the factory.
+
+The bootloader processes both passes as a stream. Therefore an image of 30 kB operates in 32 kB of SRAM. The options `ED25519_SMALL` and `WOLFSSL_ED25519_STREAMING_VERIFY` (`user_settings.h:321-324`) make the stream verification available. They also keep the stack frame in the 1024 words at `startup_gcc.c:51`.
+
+## Install Transaction
+
+The active record stays correct during both passes. If the transfer stops, or if the bootloader rejects the image, the previous firmware still starts. The test `test_reset_during_frames_keeps_old_firmware` (`tests/test_emu_budget.py:81`) stops a transfer in a frame. It then shows the old release message.
+
+If `diff` is 0, the bootloader does these steps in this sequence (`bootloader.c:318-352`):
+
+1. Copy the installed firmware to `BACKUP_FW_BASE`. Write the backup record last (`bootloader.c:321-329`).
+2. Erase the active record. Copy the decrypted image from the staging area over the old image (`bootloader.c:331-338`).
+3. Write the new record. The magic is in the last word (`bootloader.c:343`).
+4. Raise the floor with `sync_floor`. Erase the backup record. Erase the backup firmware pages (`bootloader.c:346-352`).
+
+If power stops in step 2 or step 3, flash memory holds an incomplete active record and a correct backup record. At the next start, `recover_firmware` (`bootloader.c:148`) corrects this condition before `main` accepts a command. It copies the backup pages to the firmware region and writes the active record again. It erases the backup record only after both operations are successful. If power stops during this recovery, the next start does the same operations again. Each interruption point gives the old image or the new image.
+
+Step 4 erases the backup firmware. If the backup stays, a flash dump shows the replaced firmware in plain text. The test `test_max_image_and_backup_fit_tm4c` (`tests/test_emu_budget.py:63`) shows that the full backup region reads `0xFF` after an installation. The test installs the largest image two times. Therefore the 256 kB of flash memory holds an active copy, a staged copy, and a backup copy at the same time.
+
+## Version Ratchet
+
+The floor has its own page at `MIN_VER_BASE`. No code erases this page. A program operation changes flash bits from 1 to 0. Only an erase operation changes them back to 1. The function `min_ver_slot` (`bootloader.c:106`) finds the first word that reads `0xFFFFFFFF`. The function `sync_floor` (`bootloader.c:168`) programs one more word of 4 bytes at that address with `FlashProgram`.
+
+No code sends the floor to `program_flash`, because `program_flash` erases the page first (`bootloader.c:374`). A floor in the boot record page is not safe for the same reason. Each write of the record erases that page. The floor then reads as erased for approximately 20 ms. If a person pushes RESET in this interval, an old version installs. The separate page removes this interval.
+
+The function `cur_floor` (`bootloader.c:116`) reads the floor. The floor is the last word that does not read `0xFFFFFFFF`. A fully erased page gives version 1. The function is `noinline` and reads through a `volatile` pointer. This is necessary. In an earlier build the compiler kept one floor value in a register, and the early rejection and both fold operations used that register. One fault on the register then let a version 1 image install.
+
+The bootloader now reads the floor again at `bootloader.c:240`, `279`, `282`, and `173`. One incorrect read does not defeat the other tests. The test `tests/emu/fault_rollback.py` finds each `bl cur_floor` instruction in the binary and sets `r0` to 1 at each of these points.
+
+A version 0 image installs at each floor value and does not raise the floor. The condition `ver != 0` at the four points gives this behavior. The bootloader writes the record before it raises the floor. The function `main` calls `sync_floor` at each start. Therefore a reset between the two write operations raises the floor before the new image starts.
+
+The page holds 256 words. The bootloader uses a word only when `ver` is more than the floor. Therefore 256 versions in an increasing sequence fill the page. The function `sync_floor` stops at the last word (`bootloader.c:175`) and does not write into the record page. The floor is a 32-bit word. Therefore version `0xFFFF` is `0x0000FFFF` and stays different from the erased word `0xFFFFFFFF`. A 16-bit floor makes these two values the same.
+
+## Fault Resistance
+
+The commit has no branch instruction that a fault can skip. The bootloader puts the version result, the signature result, and the 16 tag byte differences into one word, `diff`. The magic for the record is `BOOT_MAGIC ^ diff` (`bootloader.c:316`). If one test fails, this calculation gives a magic that the boot path rejects.
+
+The 16 byte differences resist one fault. The version result and the signature result are single conditions. Therefore the bootloader calculates them two times at different points (`bootloader.c:279-283`). Each result now needs two faults, as the tag does. This is important against an attacker who has `fw_key`. That attacker makes a correct tag and a correct version. Only `diff |= 2` then stays. The test `tests/emu/fault_commit.py` finds the XOR instruction in the binary and skips it. The test shows that `diff == 0` still controls the record write.
+
+The function `boot_firmware` uses the same method (`bootloader.c:415-430`). It reads the magic two times through `volatile` pointers. It puts both limit tests into the word `bad`. It tests `bad` again for each character of the message. It tests `bad` one more time before it starts the firmware.
+
+The `volatile` keywords are necessary in both places. Without `volatile` on the two magic reads, the compiler removes the second read. Without `volatile` on `bad`, the compiler removes the test in the loop and the test before the jump. One branch then controls both operations. The message loop reads `msg_len` bytes from `FW_BASE + size`, and a failed update puts attacker values in these two fields. That one branch therefore gives the attacker a flash read function. Examine the disassembly after each change to this function.
+
+The first test returns to the command loop and does not stop the processor (`bootloader.c:422`). A stopped bootloader does not answer `U`. A person must then remove the power to update the device. The test before the jump does stop the processor, because the next instruction starts the image.
+
+## Host Protocol
+
+The tool `fw_update.py` divides the file at byte 98 (`fw_update.py:94-95`) and sends the header without a change. Before the handshake it removes the bytes in the input buffer (`fw_update.py:44-47`). This is necessary because the device resets after a rejection. The banner after the reset contains three `U` characters, and the tool can read these characters as the echo.
+
+The handshake has a limit of 10 seconds (`fw_update.py:54-59`). A bootloader that stops in the header does not answer. The tool then gives an error and does not wait.
+
+Each frame has a length of 2 bytes in big-endian sequence and then the data (`fw_update.py:103`). The bootloader acknowledges each frame (`bootloader.c:273`). `FRAME_SIZE` is 256 (`fw_update.py:34`), and this value must divide `FLASH_PAGESIZE`. The bootloader fills a page buffer of 1024 bytes and rejects a frame that is too large for the buffer (`bootloader.c:256`). A different frame size makes a correct update cross the page limit, and the bootloader then rejects that update.
+
+The last read is the commit acknowledgement (`fw_update.py:111-113`). It gives the result of the tag test and the signature test. Without this read, the last acknowledgement is the acknowledgement of the last frame. The bootloader sends that byte before it calculates the tag. The tool then gives exit code 0 for a rejected image. `RESP_TIMEOUT` is 30 seconds (`fw_update.py:35`), because the commit acknowledgement occurs after the signature verification, the decryption, the backup copy, and the installation.
+
+The function `reject` (`bootloader.c:72`) waits for `UARTBusy` before the reset. Therefore the `ERROR` byte goes out of the transmitter before the reset.
+
+One condition stays open. The bootloader sends the first OK after the version test and before the verification (`bootloader.c:250`). The OK therefore shows if the version is more than the floor. An attacker finds the floor in approximately 16 attempts. The published version numbers give the same data. A later OK breaks the frame sequence of the host tool.
+
+## Build Configuration
+
+`LOCK` is 1 by default (`bootloader/Makefile:23`). The tool `bl_build.py` sends the value of the environment variable `ECTF_LOCK` to make (`bl_build.py:42`). Therefore the command `python bl_build.py` makes an image that locks the debug port.
+
+Make does not see a change to a `-D` option. The stamp file test at `bootloader/Makefile:27` removes `bootloader.o` when the value changes.
+
+The file `user_settings.h` puts ChaCha20, Poly1305, Ed25519, Curve25519, and SHA512 in the build (lines 300 to 325 and line 357). It removes AES, DES3, RSA, and TLS.
+
+The link command at `bootloader/Makefile:62` lists all driverlib objects. Only `--gc-sections` from `makedefs:85` keeps uDMA, USB, CAN, and the other drivers out of flash memory. The uDMA controller can copy flash memory to the UART, and an attacker who executes code can use it. No code calls these drivers. Therefore the symbol test in CI fails only if the removal fails.
 
 # Prerequisites
 ![e](https://i.pinimg.com/originals/8f/c2/54/8fc254c88aead8df332af9039d9658d2.gif)
