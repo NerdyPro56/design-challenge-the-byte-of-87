@@ -63,3 +63,6 @@ bootloader/inc/secrets.h
 tools/secret_build_output.txt
 secret_build_output.txt
 
+# Scratch
+temp/
+
