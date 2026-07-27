@@ -1,3 +1,5 @@
+<img width="525" height="268" alt="image" src="https://github.com/user-attachments/assets/d9cda4fc-abd3-4706-a788-f6ace7e0635a" />
+
 # Cryptographic Automotive Software Handler and Bootloader (CrASHBoot)
 ## "Informative diagrams" and Warning by Taurox
 > [!warning]
@@ -131,6 +133,7 @@ python bl_build.py             && lm4flash ../bootloader/bin/bootloader.bin   # 
 
 # Protect and Update Firmware
 
+<img width="547" height="250" alt="image" src="https://github.com/user-attachments/assets/d09ff2bf-12a1-4610-8958-25ca28d9b1c2" />
 
 <img width="378" height="379" alt="image" src="https://github.com/user-attachments/assets/30115e29-d746-4239-be26-62979ab64e26" />
 
