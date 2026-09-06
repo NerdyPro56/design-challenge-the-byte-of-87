@@ -1,15 +1,16 @@
-<img width="525" height="268" alt="image" src="https://github.com/user-attachments/assets/d9cda4fc-abd3-4706-a788-f6ace7e0635a" />
+![e](https://media.tenor.com/_7LVz9txkrYAAAAe/an-iq-too-high-an.png)
 
 # Cryptographic Automotive Software Handler and Bootloader (CrASHBoot)
 ## "Informative diagrams" and Warning by Taurox
 > [!warning]
 > # Warning: This bootloader may soft-brick your Tiva if you mess up instructions (recoverable)
 
-<img width="736" height="736" alt="image" src="https://github.com/user-attachments/assets/3ec145d9-b7bc-44f8-8cb2-86ae1ae6bf5b" />
+![e](https://i.pinimg.com/736x/f5/b0/05/f5b0058025a3cada0d83af9f6e03fb9d.jpg)
+
 
 ## The Byte of 87 secure redesign
 
-<img width="1188" height="301" alt="image" src="https://github.com/user-attachments/assets/12433aa3-654a-40fb-86f4-5dc58206de2e" />
+![e](https://media.tenor.com/5e1v4RzZY7EAAAAM/mafu-mafumafu.gif)
 
 This repository hardens CrASHBoot for the 2026 BWSI eCTF. The update path uses ChaCha20-Poly1305 with an Ed25519 signature over the header and ciphertext, a monotone `min_ver` ratchet blocks rollback, and the boot record commits through a derived magic rather than a branch. The debug port locks at first boot so a flash dump returns nothing.
 
@@ -28,8 +29,7 @@ Please, send help. I need to escape this relentless cycle. I need a team of tale
 Do not worry, poor employee. Your call for help has reached thee! Fear not your bugs, nor dread the deploy, us interns come, to code your buoy!
 
 # Read This First
-<img width="736" height="736" alt="image" src="https://github.com/user-attachments/assets/c9ca1dc7-8b6a-4e08-a10d-13ab942fba40" />
-
+![e](https://preview.redd.it/i-can-turn-literally-anything-into-an-ado-reference-v0-oaqr4rz9s8pd1.png?auto=webp&s=e669ff1cdfd79ba954642df4ff7a6a9b8e1c7554)
 ```
 ECTF_LOCK=0 python bl_build.py    # dev: keeps lm4flash and openocd
 python bl_build.py                # handoff: SWD dies at the next power cycle
@@ -278,8 +278,9 @@ python fw_update.py --port /dev/tty.usbmodemXXXX --firmware init_fw_prot.bin
 
 # Build and Flash
 
-<img width="250" height="379" alt="image" src="https://github.com/user-attachments/assets/dceb7010-5797-47df-bfcc-b75d19dcb96f" />
-<img width="270" height="506.5" alt="image" src="https://github.com/user-attachments/assets/eb773898-d51d-470b-85ed-b42187c32daa" />
+![e](https://upload.wikimedia.org/wikipedia/en/c/c5/Bob_the_builder.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled)
+
+![e](https://ew.com/thmb/3HmxKGbg7EbwZAzBsoqL6amL3o0=/1500x0/filters:no_upscale():max_bytes(150000):strip_icc()/the-flash-2-0c932c5cf4ec4c278e006f62de43148a.jpg)
 
 ```
 ECTF_LOCK=0 python bl_build.py && lm4flash ../bootloader/bin/bootloader.bin   # reflashable
@@ -288,10 +289,7 @@ python bl_build.py             && lm4flash ../bootloader/bin/bootloader.bin   # 
 
 # Protect and Update Firmware
 
-<img width="547" height="250" alt="image" src="https://github.com/user-attachments/assets/d09ff2bf-12a1-4610-8958-25ca28d9b1c2" />
-
-<img width="378" height="379" alt="image" src="https://github.com/user-attachments/assets/30115e29-d746-4239-be26-62979ab64e26" />
-
+![e](https://static.wikia.nocookie.net/projectsekai/images/d/d6/Hibikase_Game_Cover.png/revision/latest?cb=20210114110312)
 
 ```
 cd ../firmware && make
@@ -317,8 +315,7 @@ A bad signature is refused without replacing the last committed firmware.
 
 # Interacting with the Bootloader
 
-<img width="500" height="500" alt="image" src="https://github.com/user-attachments/assets/ec02c261-c105-45d3-b6e3-8605dd0935f8" />
-
+![e](https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQQWqPgzJlUTtG-Uf2DnDUUXId68tL38VPONYDviDHypFOfJw34rtmS9vzQ&s=10)
 
 ```
 python -m serial.tools.miniterm /dev/tty.usbmodemXXXX 115200
@@ -328,8 +325,7 @@ python -m serial.tools.miniterm /dev/tty.usbmodemXXXX 115200
 
 # When It Looks Bricked
 
-<img width="550" height="550" alt="image" src="https://github.com/user-attachments/assets/a06b4139-85ac-4f3d-8a63-b75419f6c54d" />
-
+![e](https://images.photowall.com/products/52172/red-brick-wall.jpg?h=699&q=85)
 
 | Symptom | Cause | Cure |
 | --- | --- | --- |
@@ -344,8 +340,7 @@ python -m serial.tools.miniterm /dev/tty.usbmodemXXXX 115200
 
 # Debug Lock and Recovery
 
-<img width="302" height="222" alt="image" src="https://github.com/user-attachments/assets/d884ec45-acb5-4217-82fe-f972afb14c26" />
-
+![e](https://media.tenor.com/_rXkwz7u1t4AAAAe/i%27m-out-i%27m-out-1-3-seconds.png)
 
 The production build clears `BOOTCFG.DBG1` on the first boot. An unplug and replug latches it. RESET does not.
 
